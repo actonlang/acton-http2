@@ -1,0 +1,22 @@
+import net
+
+class Frame:
+    pass
+
+actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: action(Http2Client) -> None, on_receive: action(Http2Client, bytes) -> None, on_error: action(Http2Client, str) -> None, tls_verify: bool=True, connect_timeout: float=10.0):
+
+    var recv_buffer = b""
+
+    def _connect():
+        tls_port = port if port is not None else 443
+
+        tls_conn = net.TLSConnection(cap, address, tls_port, _on_tls_connect, _on_tls_receive, _on_tls_error, tls_verify)
+
+    def _on_tls_connect(con: net.TLSConnection) -> None:
+        on_connect(self)
+
+    def _on_tls_receive(con: net.TLSConnection, data: bytes) -> None:
+        on_receive(self, data)
+
+    def _on_tls_error(conn: net.TLSConnection, error: str) -> None:
+        on_error(self, error)
