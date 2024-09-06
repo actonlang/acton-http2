@@ -1,10 +1,40 @@
 import net
 
 class Frame:
-    pass
+    def serialize(self):
+        return b''
+
+PADDED = 0x8
+END_STREAM = 0x1
 
 class DataFrame(Frame):
-    pass
+
+    def __init__(self, data: bytes, pad_len: int, stream_id: int, end_stream=False):
+        self.data = data
+        self.pad_len = pad_len
+        self.stream_id = stream_id
+        self.end_stream = end_stream
+
+    def serialize(self):
+        serialized = b''
+
+        length = len(self.data)
+        flags = 0x0
+        if self.pad_len > 0:
+            length += self.pad_len + 8
+            flags |= PADDED
+
+        if self.end_stream:
+            flags |= END_STREAM
+
+        serialized += bytes([length & 0xFF0000, length & 0xFF00, length & 0xFF])
+        serialized += bytes([0x00])
+        serialized += bytes([self.stream_id & 0x7F000000, self.stream_id & 0xFF0000, self.stream_id & 0xFF00, self.stream_id & 0xFF])
+        serialized += bytes([self.pad_len & 0xFF])
+        serialized += self.data
+        serialized += b'\x00' * self.pad_len
+
+        return serialized
 
 class HeadersFrame(Frame):
     pass
