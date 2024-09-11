@@ -28,16 +28,56 @@ class DataFrame(Frame):
             flags |= END_STREAM
 
         serialized += bytes([length & 0xFF0000, length & 0xFF00, length & 0xFF])
+        # Type field
         serialized += bytes([0x00])
+        serialized += bytes([flags])
         serialized += bytes([self.stream_id & 0x7F000000, self.stream_id & 0xFF0000, self.stream_id & 0xFF00, self.stream_id & 0xFF])
-        serialized += bytes([self.pad_len & 0xFF])
+        if self.pad_len > 0:
+            serialized += bytes([self.pad_len & 0xFF])
         serialized += self.data
         serialized += b'\x00' * self.pad_len
 
         return serialized
 
+PRIORITY = 0x20
+END_HEADERS = 0x04
+
 class HeadersFrame(Frame):
-    pass
+    def __init__(self, field_data: bytes, pad_len: int, stream_id: int, priority: bool, end_headers: bool, end_stream: bool):
+        self.field_data = field_data
+        self.pad_len = pad_len
+        self.stream_id = stream_id
+        self.priority = priority
+        self.end_headers = end_headers
+        self.end_stream = end_stream
+
+    def serialize(self) -> bytes:
+        serialized = b''
+
+        length = len(self.field_data)
+
+        flags = 0x0
+        if self.pad_len > 0:
+            length += self.pad_len + 8
+            flags |= PADDED
+
+        if self.priority
+            length += 5
+            flags |= PRIORITY
+        if self.end_headers:
+            flags |= END_HEADERS
+        if self.end_stream:
+            flags |= END_STREAM
+
+        # Type field
+        serialized += bytes([0x01])
+        serialized += bytes([flags])
+        serialized += bytes([self.stream_id & 0x7F000000, self.stream_id & 0xFF0000, self.stream_id & 0xFF00, self.stream_id & 0xFF])
+        if self.pad_len > 0:
+            serialized += bytes([self.pad_len & 0xFF])
+        serialized += b'\x00' * self.pad_len
+
+        return serialized
 
 class PriorityFrame(Frame):
     pass
@@ -63,9 +103,20 @@ class WindowUpdateFrame(Frame):
 class ContinuationFrame(Frame):
     pass
 
-actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: action(Http2Client) -> None, on_receive: action(Http2Client, bytes) -> None, on_error: action(Http2Client, str) -> None, tls_verify: bool=True, connect_timeout: float=10.0):
+class Stream:
+    def __init__(self, stream_id, on_receive: action(Http2Client, bytes) -> None):
+        self.stream_id
+        self.on_receive = on_receive
+        self.recv_buffer = b''
 
-    var recv_buffer = b""
+    def receive_frame(self, frame: Frame):
+        pass
+
+actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: action(Http2Client) -> None, on_error: action(Http2Client, str) -> None, tls_verify: bool=True, connect_timeout: float=10.0):
+
+    var recv_buffer = b''
+    var next_stream_id = 1
+    var streams = {}
 
     def _connect():
         tls_port = port if port is not None else 443
