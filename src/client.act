@@ -121,7 +121,7 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
     def _connect():
         tls_port = port if port is not None else 443
 
-        tls_conn = net.TLSConnection(cap, address, tls_port, _on_tls_connect, _on_tls_receive, _on_tls_error, tls_verify)
+        tls_conn = net.TLSConnection(cap, address, tls_port, _on_tls_connect, _on_tls_receive, _on_tls_error, _on_remote_close, tls_verify)
 
     def _on_tls_connect(con: net.TLSConnection) -> None:
         #on_connect(self)
@@ -133,6 +133,10 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
 
     def _on_tls_error(conn: net.TLSConnection, error: str) -> None:
         #on_error(self, error)
+        pass
+
+    def _on_remote_close(con: net.TCPListenConnection) -> None:
+        #on_remote_close(self)
         pass
 
     _connect()
