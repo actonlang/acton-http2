@@ -61,7 +61,7 @@ class HeadersFrame(Frame):
             length += self.pad_len + 8
             flags |= PADDED
 
-        if self.priority
+        if self.priority:
             length += 5
             flags |= PRIORITY
         if self.end_headers:
@@ -105,7 +105,7 @@ class ContinuationFrame(Frame):
 
 class Stream:
     def __init__(self, stream_id, on_receive: action(Http2Client, bytes) -> None):
-        self.stream_id
+        self.stream_id = stream_id
         self.on_receive = on_receive
         self.recv_buffer = b''
 
