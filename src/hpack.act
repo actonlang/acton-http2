@@ -1,0 +1,5 @@
+def deflate(headers: dict[str, str]) -> bytes:
+    NotImplemented
+
+def inflate(compressed_headers: bytes) -> dict[str, str]:
+    NotImplemented
