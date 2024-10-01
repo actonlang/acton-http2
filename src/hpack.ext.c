@@ -23,7 +23,49 @@ B_NoneType hpackQ_DeflaterD___del__(hpackQ_Deflater self) {
 }
 
 B_bytes hpackQ_DeflaterD_deflate(hpackQ_Deflater self, B_dict headers) {
-    return to$bytes("");
+    B_IteratorD_dict_items iter = $NEW(B_IteratorD_dict_items, headers);
+    B_tuple item;
+
+    size_t numheaders = headers->numelements;
+
+    nghttp2_nv *nvs = acton_calloc(sizeof(nghttp2_nv), numheaders);
+
+    for (int i=0; i < numheaders; i++) {
+        item = (B_tuple)iter->$class->__next__(iter);
+        B_value key = item->components[0];
+        B_value value = item->components[1];
+        if (value && key->$class->$class_id == STR_ID &&
+            value->$class->$class_id == STR_ID) {
+            nvs[i].name = (uint8_t*)fromB_str((B_str)key);
+	    nvs[i].namelen = ((B_str)key)->nbytes;
+            nvs[i].value = (uint8_t*)fromB_str((B_str)value);
+	    nvs[i].valuelen = ((B_str)value)->nbytes;
+	    // Just set to 0 for now, work out NO_INDEX flag later
+	    nvs[i].flags = 0;
+	}
+	else {
+            // break on encountering invalid header? TBD
+	    numheaders = i;
+	    break;
+	}
+    }
+
+    size_t buflen = nghttp2_hd_deflate_bound(self->deflater, nvs, numheaders);
+
+    uint8_t* buf = acton_malloc(buflen+1);
+
+    nghttp2_ssize deflate_ret = nghttp2_hd_deflate_hd2(self->deflater, buf, buflen, nvs, numheaders);
+
+    if (deflate_ret < 0) {
+        buf[0] = 0;
+    }
+    else {
+        buf[buflen] = 0;
+    }
+
+    acton_free(nvs);
+
+    return to$bytes(buf);
 }
 
 
