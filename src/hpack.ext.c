@@ -5,26 +5,30 @@
 void hpackQ___ext_init__() {
 }
 
-struct hpackQ_DeflaterG_class;
+/*struct hpackQ_DeflaterG_class;
 
 struct hpackQ_Deflater {
     struct hpackQ_DeflaterG_class *$class;
     nghttp2_hd_deflater *deflater;
-};
+};*/
 
 B_NoneType hpackQ_DeflaterD___init__(hpackQ_Deflater self) {
-    nghttp2_hd_deflate_new(&self->deflater, DEFAULT_MAX_BUFLEN);
+    nghttp2_hd_deflater *deflater;
+    nghttp2_hd_deflate_new(&deflater, DEFAULT_MAX_BUFLEN);
+    self->_deflater = deflater;
     return B_None;
 }
 
 B_NoneType hpackQ_DeflaterD___del__(hpackQ_Deflater self) {
-    nghttp2_hd_deflate_del(self->deflater);
+    nghttp2_hd_deflate_del((nghttp2_hd_deflater*)self->_deflater);
     return B_None;
 }
 
 B_bytes hpackQ_DeflaterD_deflate(hpackQ_Deflater self, B_dict headers) {
     B_IteratorD_dict_items iter = $NEW(B_IteratorD_dict_items, headers);
     B_tuple item;
+
+    nghttp2_hd_deflater *deflater = (nghttp2_hd_deflater*)self->_deflater;
 
     size_t numheaders = headers->numelements;
 
@@ -65,24 +69,26 @@ B_bytes hpackQ_DeflaterD_deflate(hpackQ_Deflater self, B_dict headers) {
 
     acton_free(nvs);
 
-    return to$bytes(buf);
+    return to$bytes((char*)buf);
 }
 
 
-struct hpackQ_InflaterG_class;
+/*struct hpackQ_InflaterG_class;
 
 struct hpackQ_Inflater {
     struct hpackQ_InflaterG_class *$class;
     nghttp2_hd_inflater *inflater;
-};
+};*/
 
 B_NoneType hpackQ_InflaterD___init__(hpackQ_Inflater self) {
-    nghttp2_hd_inflate_new(&self->inflater);
+    nghttp2_hd_inflater *inflater;
+    nghttp2_hd_inflate_new(&inflater);
+    self->_inflater = inflater;
     return B_None;
 }
 
 B_NoneType hpackQ_InflaterD___del__(hpackQ_Inflater self) {
-    nghttp2_hd_inflate_del(self->inflater);
+    nghttp2_hd_inflate_del(self->_inflater);
     return B_None;
 }
 

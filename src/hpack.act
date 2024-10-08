@@ -1,5 +1,7 @@
 
 class Deflater:
+    _deflater: u64
+
     def __init__(self):
         NotImplemented
 
@@ -10,6 +12,8 @@ class Deflater:
         NotImplemented
 
 class Inflater:
+    _inflater: u64
+
     def __init__(self):
         NotImplemented
 
