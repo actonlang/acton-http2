@@ -3,6 +3,10 @@ class Deflater:
     _deflater: u64
 
     def __init__(self):
+        pass # TODO: remove, but actonc bug!?
+        self._init_deflater()
+
+    def _init_deflater(self):
         NotImplemented
 
     def __del__(self):
@@ -15,6 +19,10 @@ class Inflater:
     _inflater: u64
 
     def __init__(self):
+        pass # TODO: remove, but actonc bug!?
+        self._init_inflater()
+
+    def _init_inflater(self):
         NotImplemented
 
     def __del__(self):

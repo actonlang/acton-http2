@@ -5,30 +5,31 @@
 void hpackQ___ext_init__() {
 }
 
-/*struct hpackQ_DeflaterG_class;
-
-struct hpackQ_Deflater {
-    struct hpackQ_DeflaterG_class *$class;
-    nghttp2_hd_deflater *deflater;
-};*/
-
-B_NoneType hpackQ_DeflaterD___init__(hpackQ_Deflater self) {
+B_NoneType hpackQ_DeflaterD__init_deflater (hpackQ_Deflater self) {
     nghttp2_hd_deflater *deflater;
     nghttp2_hd_deflate_new(&deflater, DEFAULT_MAX_BUFLEN);
-    self->_deflater = deflater;
+    self->_deflater = toB_u64((unsigned long)deflater);
+    return B_None;
+}
+
+B_NoneType hpackQ_InflaterD__init_inflater (hpackQ_Inflater self) {
+    nghttp2_hd_inflater *inflater;
+    nghttp2_hd_inflate_new(&inflater);
+    self->_inflater = toB_u64((unsigned long)inflater);
     return B_None;
 }
 
 B_NoneType hpackQ_DeflaterD___del__(hpackQ_Deflater self) {
-    nghttp2_hd_deflate_del((nghttp2_hd_deflater*)self->_deflater);
+    nghttp2_hd_deflater *deflater = (nghttp2_hd_deflater*)fromB_u64(self->_deflater);
+    nghttp2_hd_deflate_del(deflater);
     return B_None;
 }
 
 B_bytes hpackQ_DeflaterD_deflate(hpackQ_Deflater self, B_dict headers) {
+    nghttp2_hd_deflater *deflater = (nghttp2_hd_deflater*)fromB_u64(self->_deflater);
+
     B_IteratorD_dict_items iter = $NEW(B_IteratorD_dict_items, headers);
     B_tuple item;
-
-    nghttp2_hd_deflater *deflater = (nghttp2_hd_deflater*)self->_deflater;
 
     size_t numheaders = headers->numelements;
 
@@ -54,11 +55,11 @@ B_bytes hpackQ_DeflaterD_deflate(hpackQ_Deflater self, B_dict headers) {
 	}
     }
 
-    size_t buflen = nghttp2_hd_deflate_bound(self->deflater, nvs, numheaders);
+    size_t buflen = nghttp2_hd_deflate_bound(deflater, nvs, numheaders);
 
     uint8_t* buf = acton_malloc(buflen+1);
 
-    nghttp2_ssize deflate_ret = nghttp2_hd_deflate_hd2(self->deflater, buf, buflen, nvs, numheaders);
+    nghttp2_ssize deflate_ret = nghttp2_hd_deflate_hd2(deflater, buf, buflen, nvs, numheaders);
 
     if (deflate_ret < 0) {
         buf[0] = 0;
@@ -72,32 +73,19 @@ B_bytes hpackQ_DeflaterD_deflate(hpackQ_Deflater self, B_dict headers) {
     return to$bytes((char*)buf);
 }
 
-
-/*struct hpackQ_InflaterG_class;
-
-struct hpackQ_Inflater {
-    struct hpackQ_InflaterG_class *$class;
-    nghttp2_hd_inflater *inflater;
-};*/
-
-B_NoneType hpackQ_InflaterD___init__(hpackQ_Inflater self) {
-    nghttp2_hd_inflater *inflater;
-    nghttp2_hd_inflate_new(&inflater);
-    self->_inflater = inflater;
-    return B_None;
-}
-
 B_NoneType hpackQ_InflaterD___del__(hpackQ_Inflater self) {
-    nghttp2_hd_inflate_del(self->_inflater);
+    nghttp2_hd_inflater *inflater = (nghttp2_hd_inflater*)fromB_u64(self->_inflater);
+    nghttp2_hd_inflate_del(inflater);
     return B_None;
 }
 
 B_dict hpackQ_InflaterD_inflate(hpackQ_Inflater self, B_bytes compressed_headers) {
+    nghttp2_hd_inflater *inflater = (nghttp2_hd_inflater*)fromB_u64(self->_inflater);
     B_dict ret;
 
     size_t inlen = (size_t)compressed_headers->nbytes;
     uint8_t *in = (uint8_t*)compressed_headers->str;
-    
+
     nghttp2_ssize inflate_ret;
     nghttp2_nv nv_out;
     int inflate_flags;
@@ -105,7 +93,7 @@ B_dict hpackQ_InflaterD_inflate(hpackQ_Inflater self, B_bytes compressed_headers
     B_Hashable wit = (B_Hashable)B_HashableD_strG_witness;
 
     while (1) {
-        inflate_ret = nghttp2_hd_inflate_hd3(self->inflater, &nv_out, &inflate_flags, in, inlen, 1);
+        inflate_ret = nghttp2_hd_inflate_hd3(inflater, &nv_out, &inflate_flags, in, inlen, 1);
 
 	if (inflate_ret < 0) {
             // Need to handle these error cases more gracefully. Maybe an optional?
@@ -126,7 +114,7 @@ B_dict hpackQ_InflaterD_inflate(hpackQ_Inflater self, B_bytes compressed_headers
 	}
 
 	if (inflate_flags & NGHTTP2_HD_INFLATE_FINAL) {
-            nghttp2_hd_inflate_end_headers(self->inflater);
+            nghttp2_hd_inflate_end_headers(inflater);
             break;
 	}
 
