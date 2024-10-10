@@ -10,9 +10,6 @@ class Deflater:
     def _init_deflater(self):
         NotImplemented
 
-    def __del__(self):
-        NotImplemented
-
     def deflate(self, headers: dict[str, str]) -> bytes:
         NotImplemented
 
@@ -24,9 +21,6 @@ class Inflater:
         self._init_inflater()
 
     def _init_inflater(self):
-        NotImplemented
-
-    def __del__(self):
         NotImplemented
 
     def inflate(self, compressed_headers: bytes) -> dict[str, str]:

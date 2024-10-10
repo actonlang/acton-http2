@@ -5,23 +5,37 @@
 void hpackQ___ext_init__() {
 }
 
+void *acton_malloc_cb(size_t size, void *mem_user_data) {
+    return acton_malloc(size);
+}
+
+void *acton_calloc_cb(size_t nmemb, size_t size, void *mem_user_data) {
+    return acton_calloc(nmemb, size);
+}
+
+void acton_free_cb(void *ptr, void *mem_user_data) {
+    acton_free(ptr);
+}
+
+void *acton_realloc_cb(void *ptr, size_t size, void *mem_user_data) {
+    return acton_realloc(ptr, size);
+}
+
 B_NoneType hpackQ_DeflaterD__init_deflater (hpackQ_Deflater self) {
+    nghttp2_mem mem = {NULL, acton_malloc_cb, acton_free_cb, acton_calloc_cb,
+	               acton_realloc_cb};
     nghttp2_hd_deflater *deflater;
-    nghttp2_hd_deflate_new(&deflater, DEFAULT_MAX_BUFLEN);
+    nghttp2_hd_deflate_new2(&deflater, DEFAULT_MAX_BUFLEN, &mem);
     self->_deflater = toB_u64((unsigned long)deflater);
     return B_None;
 }
 
 B_NoneType hpackQ_InflaterD__init_inflater (hpackQ_Inflater self) {
+    nghttp2_mem mem = {NULL, acton_malloc_cb, acton_free_cb, acton_calloc_cb,
+	               acton_realloc_cb};
     nghttp2_hd_inflater *inflater;
-    nghttp2_hd_inflate_new(&inflater);
+    nghttp2_hd_inflate_new2(&inflater, &mem);
     self->_inflater = toB_u64((unsigned long)inflater);
-    return B_None;
-}
-
-B_NoneType hpackQ_DeflaterD___del__(hpackQ_Deflater self) {
-    nghttp2_hd_deflater *deflater = (nghttp2_hd_deflater*)fromB_u64(self->_deflater);
-    nghttp2_hd_deflate_del(deflater);
     return B_None;
 }
 
@@ -71,12 +85,6 @@ B_bytes hpackQ_DeflaterD_deflate(hpackQ_Deflater self, B_dict headers) {
     acton_free(nvs);
 
     return to$bytes((char*)buf);
-}
-
-B_NoneType hpackQ_InflaterD___del__(hpackQ_Inflater self) {
-    nghttp2_hd_inflater *inflater = (nghttp2_hd_inflater*)fromB_u64(self->_inflater);
-    nghttp2_hd_inflate_del(inflater);
-    return B_None;
 }
 
 B_dict hpackQ_InflaterD_inflate(hpackQ_Inflater self, B_bytes compressed_headers) {
