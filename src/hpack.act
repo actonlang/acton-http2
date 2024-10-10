@@ -1,3 +1,4 @@
+import testing
 
 class Deflater:
     _deflater: u64
@@ -30,3 +31,21 @@ class Inflater:
 
     def inflate(self, compressed_headers: bytes) -> dict[str, str]:
         NotImplemented
+
+
+def _test_roundtrip():
+    deflater = Deflater()
+    inflater = Inflater()
+
+    headers = { 'foo': 'bar', 'baz': 'qux' }
+    compressed = deflater.deflate(headers)
+    print("compressed:", compressed)
+    decompressed = inflater.inflate(compressed)
+    print("decompressed:", decompressed)
+
+    testing.assertEqual(headers, decompressed)
+
+
+actor main(env):
+    _test_roundtrip()
+    env.exit(0)
