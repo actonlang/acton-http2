@@ -28,10 +28,12 @@ class Inflater:
 
 
 def _test_roundtrip():
+    print("initializing compression contexts")
     deflater = Deflater()
     inflater = Inflater()
 
     headers = { 'foo': 'bar', 'baz': 'qux' }
+    print("compressing headers")
     compressed = deflater.deflate(headers)
     print("compressed:", compressed)
     decompressed = inflater.inflate(compressed)
