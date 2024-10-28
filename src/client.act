@@ -10,7 +10,7 @@ END_STREAM = 0x1
 
 class DataFrame(Frame):
 
-    def __init__(self, data: bytes, pad_len: int, stream_id: int, end_stream=False):
+    def __init__(self, data: bytes, pad_len: int, stream_id: u32, end_stream=False):
         self.data = data
         self.pad_len = pad_len
         self.stream_id = stream_id
@@ -32,7 +32,7 @@ class DataFrame(Frame):
         # Type field
         serialized += bytes([0x00])
         serialized += bytes([flags])
-        serialized += bytes([self.stream_id & 0x7F000000, self.stream_id & 0xFF0000, self.stream_id & 0xFF00, self.stream_id & 0xFF])
+        serialized += bytes([int(self.stream_id & 0x7F000000), int(self.stream_id & 0xFF0000), int(self.stream_id & 0xFF00), int(self.stream_id & 0xFF)])
         if self.pad_len > 0:
             serialized += bytes([self.pad_len & 0xFF])
         serialized += self.data
@@ -44,7 +44,7 @@ PRIORITY = 0x20
 END_HEADERS = 0x04
 
 class HeadersFrame(Frame):
-    def __init__(self, field_data: bytes, pad_len: int, stream_id: int, priority: bool, end_headers: bool, end_stream: bool):
+    def __init__(self, field_data: bytes, pad_len: int, stream_id: u32, priority: bool, end_headers: bool, end_stream: bool):
         self.field_data = field_data
         self.pad_len = pad_len
         self.stream_id = stream_id
@@ -73,7 +73,7 @@ class HeadersFrame(Frame):
         # Type field
         serialized += bytes([0x01])
         serialized += bytes([flags])
-        serialized += bytes([self.stream_id & 0x7F000000, self.stream_id & 0xFF0000, self.stream_id & 0xFF00, self.stream_id & 0xFF])
+        serialized += bytes([int(self.stream_id & 0x7F000000), int(self.stream_id & 0xFF0000), int(self.stream_id & 0xFF00), int(self.stream_id & 0xFF)])
         if self.pad_len > 0:
             serialized += bytes([self.pad_len & 0xFF])
         serialized += b'\x00' * self.pad_len
@@ -105,7 +105,11 @@ class ContinuationFrame(Frame):
     pass
 
 class Stream:
-    def __init__(self, stream_id, on_receive: action(Http2Client, int, bytes) -> None):
+    stream_id: u32
+    #on_receive: action(Http2Client, u32, bytes) -> None
+    recv_buffer: bytes
+
+    def __init__(self, stream_id: u32, on_receive: action(Http2Client, u32, bytes) -> None):
         self.stream_id = stream_id
         self.on_receive = on_receive
         self.recv_buffer = b''
@@ -116,10 +120,13 @@ class Stream:
 actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: action(Http2Client) -> None, on_error: action(Http2Client, str) -> None, tls_verify: bool=True, connect_timeout: float=10.0):
 
     var recv_buffer = b''
-    var next_stream_id = 1
+    var send_queue: list[Frame] = []
+    var next_stream_id: u32 = 1
     var streams = {}
     var inflater = hpack.Inflater()
     var deflater = hpack.Deflater()
+
+    var tcp_conn: ?net.TCPConnection = None
 
     def _connect():
         #tls_port = port if port is not None else 443
@@ -149,7 +156,7 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
         pass
 
     def _on_tcp_receive(con: net.TCPConnection, data: bytes) -> None:
-        #on_receive(self, data)
+        print(data)
         pass
 
     def _on_tcp_error(conn: net.TCPConnection, error: str) -> None:
@@ -160,8 +167,14 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
         #on_remote_close(self)
         pass
 
+    def _send_frames():
+        for frame in send_queue:
+            if tcp_conn is not None:
+                tcp_conn.write(frame.serialize())
+
     def get(path: str, on_receive: action(Http2Client, int, bytes) -> None):
-        streams[next_stream_id] = Stream(next_stream_id, on_receive)
+        new_stream: Stream = Stream(next_stream_id, on_receive)
+        #streams[next_stream_id] = new_stream
         next_stream_id += 2
         headers = { ':method': 'GET',
                     ':scheme': 'https',
@@ -169,6 +182,12 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
                     ':path': path }
 
         header_data = deflater.deflate(headers)
+        header_frame = HeadersFrame(header_data, 0, new_stream.stream_id, False, True, False)
+
+        send_queue.append(header_frame)
+        _send_frames()
+
+        #on_receive(self, 418, b'I am a teapot')
 
     _connect()
 
@@ -195,4 +214,4 @@ actor main(env):
 
     #tls_conn = net.TLSConnection(net.TCPConnectCap(net.TCPCap(net.NetCap(env.cap))), 'nghttp2.org', 443, _on_tls_connect, _on_tls_receive, _on_tls_error, _on_remote_close, True)
     #after 10: exit(env)
-    #test_client.get('/', _on_receive)
+    test_client.get('/', _on_receive)
