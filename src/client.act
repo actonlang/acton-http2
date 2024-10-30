@@ -106,10 +106,10 @@ class ContinuationFrame(Frame):
 
 class Stream:
     stream_id: u32
-    #on_receive: action(Http2Client, u32, bytes) -> None
+    #on_receive: action(Http2Client, int, bytes) -> None
     recv_buffer: bytes
 
-    def __init__(self, stream_id: u32, on_receive: action(Http2Client, u32, bytes) -> None):
+    def __init__(self, stream_id: u32, on_receive: action(Http2Client, int, bytes) -> None):
         self.stream_id = stream_id
         self.on_receive = on_receive
         self.recv_buffer = b''
