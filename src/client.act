@@ -5,8 +5,8 @@ class Frame:
     def serialize(self):
         return b''
 
-PADDED = 0x8
-END_STREAM = 0x1
+PADDED: u32 = 0x8
+END_STREAM: u32 = 0x1
 
 class DataFrame(Frame):
 
@@ -19,19 +19,19 @@ class DataFrame(Frame):
     def serialize(self):
         serialized = b''
 
-        length = len(self.data)
-        flags = 0x0
+        length = u32(len(self.data))
+        flags: u32 = 0x0
         if self.pad_len > 0:
-            length += self.pad_len + 8
+            length += u32(self.pad_len + 8)
             flags |= PADDED
 
         if self.end_stream:
             flags |= END_STREAM
 
-        serialized += bytes([length & 0xFF0000, length & 0xFF00, length & 0xFF])
+        serialized += bytes([int(length & 0xFF0000), int(length & 0xFF00), int(length & 0xFF)])
         # Type field
         serialized += bytes([0x00])
-        serialized += bytes([flags])
+        serialized += bytes([int(flags)])
         serialized += bytes([int(self.stream_id & 0x7F000000), int(self.stream_id & 0xFF0000), int(self.stream_id & 0xFF00), int(self.stream_id & 0xFF)])
         if self.pad_len > 0:
             serialized += bytes([self.pad_len & 0xFF])
@@ -40,8 +40,8 @@ class DataFrame(Frame):
 
         return serialized
 
-PRIORITY = 0x20
-END_HEADERS = 0x04
+PRIORITY: u32 = 0x20
+END_HEADERS: u32 = 0x04
 
 class HeadersFrame(Frame):
     def __init__(self, field_data: bytes, pad_len: int, stream_id: u32, priority: bool, end_headers: bool, end_stream: bool):
@@ -57,7 +57,7 @@ class HeadersFrame(Frame):
 
         length = len(self.field_data)
 
-        flags = 0x0
+        flags:u32 = 0x0
         if self.pad_len > 0:
             length += self.pad_len + 8
             flags |= PADDED
@@ -70,12 +70,19 @@ class HeadersFrame(Frame):
         if self.end_stream:
             flags |= END_STREAM
 
+        length32: u32 = u32(length)
+
+        serialized += bytes([int((length32 & 0xFF0000) >> 16), int((length32 & 0xFF00) >> 8), int(length32 & 0xFF)])
         # Type field
         serialized += bytes([0x01])
-        serialized += bytes([flags])
-        serialized += bytes([int(self.stream_id & 0x7F000000), int(self.stream_id & 0xFF0000), int(self.stream_id & 0xFF00), int(self.stream_id & 0xFF)])
+        serialized += bytes([int(flags)])
+        serialized += bytes([int((self.stream_id & 0x7F000000) >> 24), int((self.stream_id & 0xFF0000) >> 16), int((self.stream_id & 0xFF00) >> 8), int(self.stream_id & 0xFF)])
         if self.pad_len > 0:
             serialized += bytes([self.pad_len & 0xFF])
+        if self.priority:
+            # Stub for implementing priority later
+            pass
+        serialized += self.field_data
         serialized += b'\x00' * self.pad_len
 
         return serialized
@@ -170,18 +177,25 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
     def _send_frames():
         for frame in send_queue:
             if tcp_conn is not None:
-                tcp_conn.write(frame.serialize())
+                send_bytes = frame.serialize()
+                print("Sending TCP data: ", send_bytes)
+                #tcp_conn.write(send_bytes)
 
     def get(path: str, on_receive: action(Http2Client, int, bytes) -> None):
-        new_stream: Stream = Stream(next_stream_id, on_receive)
-        #streams[next_stream_id] = new_stream
+        print("next_stream_id: ", next_stream_id)
+        new_stream: Stream = Stream(u32(next_stream_id), on_receive)
+        print("new_stream.stream_id: ", new_stream.stream_id)
+        streams[u32(next_stream_id)] = new_stream
         next_stream_id += 2
+        print("new_stream.stream_id: ", new_stream.stream_id)
         headers = { ':method': 'GET',
                     ':scheme': 'https',
                     ':authority': address,
                     ':path': path }
 
         header_data = deflater.deflate(headers)
+        print("New stream id: ", new_stream.stream_id)
+        print("Compressed header data: ", header_data)
         header_frame = HeadersFrame(header_data, 0, new_stream.stream_id, False, True, False)
 
         send_queue.append(header_frame)
@@ -198,6 +212,7 @@ def exit(env: Env):
     env.exit(0)
 
 actor main(env):
+
     #_test_get(env)
     def _on_connect(client: Http2Client):
         pass
@@ -210,7 +225,7 @@ actor main(env):
         env.exit(0)
 
     #139.162.123.134
-    test_client = Http2Client(net.TCPConnectCap(net.TCPCap(net.NetCap(env.cap))), 'nghttp2.org', 443, _on_connect, _on_error)
+    test_client = Http2Client(net.TCPConnectCap(net.TCPCap(net.NetCap(env.cap))), 'nghttp2.org', 80, _on_connect, _on_error)
 
     #tls_conn = net.TLSConnection(net.TCPConnectCap(net.TCPCap(net.NetCap(env.cap))), 'nghttp2.org', 443, _on_tls_connect, _on_tls_receive, _on_tls_error, _on_remote_close, True)
     #after 10: exit(env)
