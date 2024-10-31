@@ -117,7 +117,7 @@ class SettingsFrame(Frame):
 
         serialized += bytes([int((length32 & 0xFF0000) >> 16), int((length32 & 0xFF00) >> 8), int(length32 & 0xFF)])
         # Type field
-        serialized += bytes([0x05])
+        serialized += bytes([0x04])
         serialized += bytes([flags])
         # Stream ID always 0 for settings frame
         serialized += bytes([0x00, 0x00, 0x00, 0x00])
