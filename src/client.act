@@ -1,6 +1,9 @@
 import net
 import hpack
 
+CLIENT_PREFACE: bytes = b'PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n'
+
+
 class Frame:
     def serialize(self):
         return b''
@@ -93,8 +96,36 @@ class PriorityFrame(Frame):
 class RstStreamFrame(Frame):
     pass
 
-class SettingFrame(Frame):
-    pass
+class SettingsFrame(Frame):
+    def __init__(self, settings: dict[u16, u32], ack: bool = False):
+        self.settings = settings
+
+        #if ack and len(self.settings > 0):
+        #    raise ValueError("ACK flag cannot coincide with payload in SETTINGS frame")
+
+        self.ack = ack
+
+    def serialize(self) -> bytes:
+        serialized = b''
+
+        #length: int = len(self.settings.items()) * 6
+        length = 0
+
+        flags: int = 0x01 if self.ack else 0x00
+
+        length32: u32 = u32(length)
+
+        serialized += bytes([int((length32 & 0xFF0000) >> 16), int((length32 & 0xFF00) >> 8), int(length32 & 0xFF)])
+        # Type field
+        serialized += bytes([0x05])
+        serialized += bytes([flags])
+        # Stream ID always 0 for settings frame
+        serialized += bytes([0x00, 0x00, 0x00, 0x00])
+        #for name, value in self.settings.items():
+        #    #stub settings payload for now
+        #    pass
+
+        return serialized
 
 class PushPromiseFrame(Frame):
     pass
@@ -160,6 +191,8 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
 
     def _on_tcp_connect(con: net.TCPConnection) -> None:
         #on_connect(self)
+        con.write(CLIENT_PREFACE)
+        con.write(SettingsFrame({}).serialize())
         pass
 
     def _on_tcp_receive(con: net.TCPConnection, data: bytes) -> None:
