@@ -163,6 +163,7 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
     var streams = {}
     var inflater = hpack.Inflater()
     var deflater = hpack.Deflater()
+    var ready: bool = False
 
     var tcp_conn: ?net.TCPConnection = None
 
@@ -191,12 +192,16 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
 
     def _on_tcp_connect(con: net.TCPConnection) -> None:
         #on_connect(self)
+        print("Sending TCP data: ", CLIENT_PREFACE)
         con.write(CLIENT_PREFACE)
-        con.write(SettingsFrame({}).serialize())
+        
+        send_bytes: bytes = SettingsFrame({}).serialize()
+        print("Sending TCP data: ", send_bytes)
+        con.write(send_bytes)
         pass
 
     def _on_tcp_receive(con: net.TCPConnection, data: bytes) -> None:
-        print(data)
+        print("Received TCP data:", data)
         pass
 
     def _on_tcp_error(conn: net.TCPConnection, error: str) -> None:
@@ -232,7 +237,8 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
         header_frame = HeadersFrame(header_data, 0, new_stream.stream_id, False, True, False)
 
         send_queue.append(header_frame)
-        _send_frames()
+        if ready:
+            _send_frames()
 
         #on_receive(self, 418, b'I am a teapot')
 
