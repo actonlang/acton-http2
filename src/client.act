@@ -198,7 +198,8 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
         send_bytes: bytes = SettingsFrame({}).serialize()
         print("Sending TCP data: ", send_bytes)
         con.write(send_bytes)
-        pass
+        ready = True
+        _send_frames()
 
     def _on_tcp_receive(con: net.TCPConnection, data: bytes) -> None:
         print("Received TCP data:", data)
@@ -217,7 +218,7 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
             if tcp_conn is not None:
                 send_bytes = frame.serialize()
                 print("Sending TCP data: ", send_bytes)
-                #tcp_conn.write(send_bytes)
+                tcp_conn.write(send_bytes)
 
     def get(path: str, on_receive: action(Http2Client, int, bytes) -> None):
         print("next_stream_id: ", next_stream_id)
@@ -227,7 +228,7 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
         next_stream_id += 2
         print("new_stream.stream_id: ", new_stream.stream_id)
         headers = { ':method': 'GET',
-                    ':scheme': 'https',
+                    ':scheme': 'http',
                     ':authority': address,
                     ':path': path }
 
