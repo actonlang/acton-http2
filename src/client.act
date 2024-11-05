@@ -28,7 +28,7 @@ class DataFrame(Frame):
         length = u32(len(self.data))
         flags: u32 = 0x0
         if self.pad_len > 0:
-            length += u32(self.pad_len + 8)
+            length += u32(self.pad_len + 1)
             flags |= PADDED
 
         if self.end_stream:
@@ -65,7 +65,7 @@ class HeadersFrame(Frame):
 
         flags:u32 = 0x0
         if self.pad_len > 0:
-            length += self.pad_len + 8
+            length += self.pad_len + 1
             flags |= PADDED
 
         if self.priority:
@@ -131,13 +131,49 @@ class SettingsFrame(Frame):
         return serialized
 
 class PushPromiseFrame(Frame):
-    pass
+    def __init__(self, promised_stream_id: u32, field_data: bytes, pad_len: int, stream_id: u32, end_headers: bool):
+        self.field_data = field_data
+        self.pad_len = pad_len
+        self.promised_stream_id = promised_stream_id
+        self.stream_id = stream_id
+        self.end_headers = end_headers
+
+    def serialize(self) -> bytes:
+        serialized = b''
+
+        length = len(self.field_data) + 4
+
+        flags:u32 = 0x0
+        if self.pad_len > 0:
+            length += self.pad_len + 1
+            flags |= PADDED
+
+        if self.end_headers:
+            flags |= END_HEADERS
+
+        length32: u32 = u32(length)
+
+        serialized += bytes([int((length32 & 0xFF0000) >> 16), int((length32 & 0xFF00) >> 8), int(length32 & 0xFF)])
+        # Type field
+        serialized += bytes([0x01])
+        serialized += bytes([int(flags)])
+        serialized += bytes([int((self.stream_id & 0x7F000000) >> 24), int((self.stream_id & 0xFF0000) >> 16), int((self.stream_id & 0xFF00) >> 8), int(self.stream_id & 0xFF)])
+        if self.pad_len > 0:
+            serialized += bytes([self.pad_len & 0xFF])
+        serialized += bytes([int((self.promised_stream_id & 0x7F000000) >> 24), int((self.promised_stream_id & 0xFF0000) >> 16), int((self.promised_stream_id & 0xFF00) >> 8), int(self.promised_stream_id & 0xFF)])
+        serialized += self.field_data
+        serialized += b'\x00' * self.pad_len
+
+        return serialized
 
 class PingFrame(Frame):
     pass
 
 class GoAwayFrame(Frame):
-    pass
+    def __init__(self, last_stream_id: u32, error_code: int, debug_data: bytes):
+        self.last_stream_id = last_stream_id
+        self.error_code = error_code
+        self.debug_data = debug_data
 
 class WindowUpdateFrame(Frame):
     pass
@@ -161,21 +197,44 @@ class Stream:
 def decode_frame(buffer: bytes) -> (?Frame, int):
     length = (buffer[0] << 16) + (buffer[1] << 8) + buffer[2]
     type = buffer[3]
-    flags = u16(buffer[4])
+    flags = u32(buffer[4])
     stream_id = u32((buffer[5] << 24) + (buffer[6] << 16) +
                     (buffer[7] << 8) + buffer[8]) & 0x7fffffff
 
     buffer = buffer[9:]
     remaining_length = len(buffer)
+    print('Decoding frame of type ', type, ' for stream ', stream_id, ' with length ', length)
     if remaining_length < length:
+        print('Incomplete frame data in buffer (', remaining_length, '/', length, ' bytes received)')
         return None, 0
 
     if type == 0:
         # DATA
-        pass
+        pad_len = 0
+        end_stream = bool(flags & END_STREAM)
+        if flags & PADDED:
+            pad_len = buffer[0]
+            buffer = buffer[1:]
+        data = buffer[:length-pad_len]
+        return DataFrame(data, pad_len, stream_id, end_stream), (length + 9)
     elif type == 1:
         # HEADERS
-        pass
+        pad_len = 0
+        field_data_len = length
+        priority = bool(flags & PRIORITY)
+        end_headers = bool(flags & END_HEADERS)
+        end_stream = bool(flags & END_STREAM)
+        if flags & PADDED:
+            pad_len = buffer[0]
+            buffer = buffer[1:]
+            field_data_len -= (1 + pad_len)
+        if priority:
+            stream_dependency = u32((buffer[0] << 24) + (buffer[1] << 16) +
+                                    (buffer[2] << 2) + buffer[3]) & 0x7fffffff
+            weight = buffer[4]
+            buffer = buffer[5:]
+            field_data_len -= 5
+        return HeadersFrame(buffer[:field_data_len], pad_len, stream_id, priority, end_headers, end_stream), (length + 9)
     elif type == 4:
         # SETTINGS
         settings = {}
@@ -184,7 +243,29 @@ def decode_frame(buffer: bytes) -> (?Frame, int):
             setting_value = u32((buffer[2] << 24) + (buffer[3] << 16) +
                              (buffer[4] << 8) + buffer[5])
             settings[setting_id] = setting_value
-            return SettingsFrame(settings, flags == 0x1), (length + 9)
+        print('SETTINGS frame decoded, ', (length + 9), ' bytes consumed from buffer')
+        return SettingsFrame(settings, flags == 0x1), (length + 9)
+    elif type == 5:
+        pad_len = 0
+        field_data_len = length - 4
+        end_headers = bool(flags & END_HEADERS)
+        if flags & PADDED:
+            pad_len = buffer[0]
+            buffer = buffer[1:]
+            field_data_len -= 1
+        promised_stream_id = u32((buffer[0] << 24) + (buffer[1] << 16) +
+                                 (buffer[2] << 2) + buffer[3]) & 0x7fffffff
+        buffer = buffer[4:]
+        return PushPromiseFrame(promised_stream_id, buffer[:field_data_len], pad_len, stream_id, end_headers), (length + 9)
+    elif type == 7:
+        last_stream_id = u32((buffer[0] << 24) + (buffer[1] << 16) +
+                             (buffer[2] << 2) + buffer[3]) & 0x7fffffff
+        error_code = ((buffer[0] << 24) + (buffer[1] << 16) +
+                         (buffer[2] << 2) + buffer[3])
+        debug_data = buffer[4:length]
+        return GoAwayFrame(last_stream_id, error_code, debug_data), (length + 9)
+        
+        
     return None, 0
 
 
@@ -235,8 +316,9 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
         _send_frames()
 
     def _on_tcp_receive(con: net.TCPConnection, data: bytes) -> None:
-        print("Received TCP data:", data)
+        #print("Received TCP data:", data)
         recv_buffer += data
+        #print('First 100 bytes of recv_buffer: ', recv_buffer[:100])
         frame, consumed_bytes = decode_frame(recv_buffer)
         
         if frame is not None:
@@ -245,6 +327,9 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
                 print('Received settings frame')
                 #for setting in frame.settings.items():
                 #    print('  setting ', setting[0], ': ', setting[1])
+            if isinstance(frame, GoAwayFrame):
+                print('Received GOAWAY frame with Last-Stream-ID ', frame.last_stream_id,
+                      ' and error code ', frame.error_code)
             else:
                 print('Received frame destined for stream ', frame.stream_id)
 
