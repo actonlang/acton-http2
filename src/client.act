@@ -325,13 +325,17 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
             recv_buffer = recv_buffer[consumed_bytes:]
             if isinstance(frame, SettingsFrame):
                 print('Received settings frame')
-                #for setting in frame.settings.items():
-                #    print('  setting ', setting[0], ': ', setting[1])
+                for setting in frame.settings.items():
+                    print('  setting ', setting)
+                if not frame.ack:
+                    send_queue.append(SettingsFrame({}, True))
             if isinstance(frame, GoAwayFrame):
                 print('Received GOAWAY frame with Last-Stream-ID ', frame.last_stream_id,
                       ' and error code ', frame.error_code)
             else:
                 print('Received frame destined for stream ', frame.stream_id)
+
+        _send_frames()
 
     def _on_tcp_error(conn: net.TCPConnection, error: str) -> None:
         #on_error(self, error)
@@ -344,6 +348,7 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
     def _send_frames():
         for frame in send_queue:
             if tcp_conn is not None:
+                send_queue.pop()
                 send_bytes = frame.serialize()
                 print("Sending TCP data: ", send_bytes)
                 tcp_conn.write(send_bytes)
