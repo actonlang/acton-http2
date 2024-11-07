@@ -8,6 +8,9 @@ class Frame:
     def __init__(self):
         self.stream_id = -1
 
+    def __str__(self):
+        return 'Frame()'
+
     def serialize(self):
         return b''
 
@@ -21,6 +24,10 @@ class DataFrame(Frame):
         self.pad_len = pad_len
         self.stream_id = stream_id
         self.end_stream = end_stream
+
+    def __str__(self):
+        data_excerpt = self.data if len(self.data) < 20 else self.data[:20]
+        return 'DataFrame(' + str(data_excerpt) + ', ' + str(self.pad_len) + ', ' + str(self.stream_id) + ', ' + str(self.end_stream) + ')'
 
     def serialize(self):
         serialized = b''
@@ -57,6 +64,10 @@ class HeadersFrame(Frame):
         self.priority = priority
         self.end_headers = end_headers
         self.end_stream = end_stream
+
+    def __str__(self):
+        data_excerpt = self.field_data if len(self.field_data) < 20 else self.field_data[:20]
+        return 'HeadersFrame(' + str(data_excerpt) + ', ' + str(self.pad_len) + ', ' + str(self.stream_id) + ', ' + str(self.priority) +', ' + str(self.end_headers) +', ' + str(self.end_stream) + ')'
 
     def serialize(self) -> bytes:
         serialized = b''
@@ -97,7 +108,25 @@ class PriorityFrame(Frame):
     pass
 
 class RstStreamFrame(Frame):
-    pass
+    def __init__(self, error_code: int, stream_id: u32):
+        self.error_code = error_code
+        self.stream_id = stream_id
+
+    def __str__(self) -> str:
+        return 'RstStreamFrame(' + str(self.error_code) + ', ' + str(self.stream_id) + ')'
+
+    def serialize(self) -> bytes:
+        serialized = b''
+        serialized += bytes([0x00, 0x00, 0x04])
+        # Type field
+        serialized += bytes([0x03])
+        serialized += bytes([0x00])
+        serialized += bytes([int((self.stream_id & 0x7F000000) >> 24), int((self.stream_id & 0xFF0000) >> 16), int((self.stream_id & 0xFF00) >> 8), int(self.stream_id & 0xFF)])
+        error_code32 = u32(self.error_code)
+        serialized += bytes([int((error_code32 & 0xFF000000) >> 24), int((error_code32 & 0xFF0000) >> 16), int((error_code32 & 0xFF00) >> 8), int(error_code32 & 0xFF)])
+
+        return serialized
+        
 
 class SettingsFrame(Frame):
     def __init__(self, settings: dict[u16, u32], ack: bool = False):
@@ -107,6 +136,9 @@ class SettingsFrame(Frame):
         #    raise ValueError("ACK flag cannot coincide with payload in SETTINGS frame")
 
         self.ack = ack
+
+    def __str__(self) -> str:
+        return 'SettingsFrame(' + str(self.settings) + ', ' + str(self.ack) + ')'
 
     def serialize(self) -> bytes:
         serialized = b''
@@ -137,6 +169,10 @@ class PushPromiseFrame(Frame):
         self.promised_stream_id = promised_stream_id
         self.stream_id = stream_id
         self.end_headers = end_headers
+
+    def __str__(self):
+        data_excerpt = self.field_data if len(self.field_data) < 20 else self.field_data[:20]
+        return 'PushPromiseFrame(' + str(data_excerpt) + ', ' + str(self.pad_len) + ', ' + str(self.promised_stream_id) + ', ' + str(self.stream_id) + ', ' + str(self.end_headers) + ')'
 
     def serialize(self) -> bytes:
         serialized = b''
@@ -174,6 +210,9 @@ class GoAwayFrame(Frame):
         self.last_stream_id = last_stream_id
         self.error_code = error_code
         self.debug_data = debug_data
+
+    def __str__(self) -> str:
+        return 'GoAwayFrame(' + str(self.last_stream_id) + str(self.error_code) + ', ' + str(self.debug_data) + ')'
 
 class WindowUpdateFrame(Frame):
     pass
@@ -235,6 +274,10 @@ def decode_frame(buffer: bytes) -> (?Frame, int):
             buffer = buffer[5:]
             field_data_len -= 5
         return HeadersFrame(buffer[:field_data_len], pad_len, stream_id, priority, end_headers, end_stream), (length + 9)
+    elif type == 3:
+        error_code = ((buffer[0] << 24) + (buffer[1] << 16) +
+                      (buffer[2] << 2) + buffer[3])
+        return RstStreamFrame(error_code, stream_id), 13
     elif type == 4:
         # SETTINGS
         settings = {}
