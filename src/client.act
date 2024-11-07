@@ -376,7 +376,7 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
                 print('Received GOAWAY frame with Last-Stream-ID ', frame.last_stream_id,
                       ' and error code ', frame.error_code)
             else:
-                print('Received frame destined for stream ', frame.stream_id)
+                print('Received frame ', frame)
 
         _send_frames()
 
