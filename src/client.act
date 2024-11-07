@@ -27,7 +27,7 @@ class DataFrame(Frame):
 
     def __str__(self):
         data_excerpt = self.data if len(self.data) < 20 else self.data[:20]
-        return 'DataFrame(' + str(data_excerpt) + ', ' + str(self.pad_len) + ', ' + str(self.stream_id) + ', ' + str(self.end_stream) + ')'
+        return 'DataFrame(data=' + str(data_excerpt) + ', pad_len=' + str(self.pad_len) + ', stream_id=' + str(self.stream_id) + ', end_stream=' + str(self.end_stream) + ')'
 
     def serialize(self):
         serialized = b''
@@ -67,7 +67,7 @@ class HeadersFrame(Frame):
 
     def __str__(self):
         data_excerpt = self.field_data if len(self.field_data) < 20 else self.field_data[:20]
-        return 'HeadersFrame(' + str(data_excerpt) + ', ' + str(self.pad_len) + ', ' + str(self.stream_id) + ', ' + str(self.priority) +', ' + str(self.end_headers) +', ' + str(self.end_stream) + ')'
+        return 'HeadersFrame(field_data=' + str(data_excerpt) + ', pad_len=' + str(self.pad_len) + ', stream_id=' + str(self.stream_id) + ', priority=' + str(self.priority) +', end_headers=' + str(self.end_headers) +', end_stream=' + str(self.end_stream) + ')'
 
     def serialize(self) -> bytes:
         serialized = b''
@@ -113,7 +113,7 @@ class RstStreamFrame(Frame):
         self.stream_id = stream_id
 
     def __str__(self) -> str:
-        return 'RstStreamFrame(' + str(self.error_code) + ', ' + str(self.stream_id) + ')'
+        return 'RstStreamFrame(error_code=' + str(self.error_code) + ', stream_id=' + str(self.stream_id) + ')'
 
     def serialize(self) -> bytes:
         serialized = b''
@@ -138,7 +138,7 @@ class SettingsFrame(Frame):
         self.ack = ack
 
     def __str__(self) -> str:
-        return 'SettingsFrame(' + str(self.settings) + ', ' + str(self.ack) + ')'
+        return 'SettingsFrame(settings=' + str(self.settings) + ', ack=' + str(self.ack) + ')'
 
     def serialize(self) -> bytes:
         serialized = b''
@@ -172,7 +172,7 @@ class PushPromiseFrame(Frame):
 
     def __str__(self):
         data_excerpt = self.field_data if len(self.field_data) < 20 else self.field_data[:20]
-        return 'PushPromiseFrame(' + str(data_excerpt) + ', ' + str(self.pad_len) + ', ' + str(self.promised_stream_id) + ', ' + str(self.stream_id) + ', ' + str(self.end_headers) + ')'
+        return 'PushPromiseFrame(field_data=' + str(data_excerpt) + ', pad_len=' + str(self.pad_len) + ', promised_stream_id=' + str(self.promised_stream_id) + ', stream_id=' + str(self.stream_id) + ', end_headers=' + str(self.end_headers) + ')'
 
     def serialize(self) -> bytes:
         serialized = b''
@@ -212,7 +212,7 @@ class GoAwayFrame(Frame):
         self.debug_data = debug_data
 
     def __str__(self) -> str:
-        return 'GoAwayFrame(' + str(self.last_stream_id) + str(self.error_code) + ', ' + str(self.debug_data) + ')'
+        return 'GoAwayFrame(last_stream_id=' + str(self.last_stream_id) + ', error_code=' + str(self.error_code) + ', debug_data=' + str(self.debug_data) + ')'
 
 class WindowUpdateFrame(Frame):
     pass
