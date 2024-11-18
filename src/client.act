@@ -220,18 +220,46 @@ class WindowUpdateFrame(Frame):
 class ContinuationFrame(Frame):
     pass
 
+class Response:
+    headers: dict[str, str]
+    data: bytes
+    outstanding_streams: dict[u32, u32]
+
+    #def __init__(on_receive: action(Http2Client, dict[str, str], bytes) -> None):
+    #    self.headers = {}
+    #    self.data = b''
+    #    self.on_receive = on_receive
+    #    self.await_response_stream = False
+
+    #def stream_response(self, stream_id, headers, data) -> bool:
+    #    for header in headers.items():
+    #        self.headers[header[0]] = header[1]
+    #    self.recv_buffer += data
+
+    #    self.child_stream_status[stream_id] = False
+
+    #    for waiting in self.outstanding_streams.values():
+    #        if waiting:
+    #            return False
+
+    #    return True
+
 class Stream:
     stream_id: u32
     #on_receive: action(Http2Client, int, bytes) -> None
+    client: Http2Client
     recv_buffer: bytes
+    awaiting_response_stream: bool
 
-    def __init__(self, stream_id: u32, on_receive: action(Http2Client, int, bytes) -> None):
+    def __init__(self, stream_id: u32):
         self.stream_id = stream_id
-        self.on_receive = on_receive
         self.recv_buffer = b''
 
-    def receive_frame(self, frame: Frame):
-        pass
+    def receive_frame(self, frame: Frame) -> (bool, u32):
+        if isinstance(frame, PushPromiseFrame):
+            return (False, frame.promised_stream_id)
+        else:
+            return (False, 0)
 
 def decode_frame(buffer: bytes) -> (?Frame, int):
     length = (buffer[0] << 16) + (buffer[1] << 8) + buffer[2]
@@ -318,6 +346,7 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
     var send_queue: list[Frame] = []
     var next_stream_id: u32 = 1
     var streams = {}
+    var responses = {}
     var inflater = hpack.Inflater()
     var deflater = hpack.Deflater()
     var ready: bool = False
@@ -378,6 +407,9 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
             else:
                 print('Received frame ', frame)
                 dest_stream = streams[frame.stream_id]
+                stream_done, new_stream_id = dest_stream.receive_frame(frame)
+                if new_stream_id > 0:
+                    streams[new_stream_id] = Stream(new_stream_id)
 
         _send_frames()
 
@@ -397,11 +429,11 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
                 print("Sending TCP data: ", send_bytes)
                 tcp_conn.write(send_bytes)
 
-    def get(path: str, on_receive: action(Http2Client, int, bytes) -> None):
+    def get(path: str, on_receive: action(Http2Client, dict[str, str], bytes) -> None):
         print("next_stream_id: ", next_stream_id)
-        new_stream: Stream = Stream(u32(next_stream_id), on_receive)
+        new_stream: Stream = Stream(u32(next_stream_id))
         print("new_stream.stream_id: ", new_stream.stream_id)
-        streams[u32(next_stream_id)] = new_stream
+        streams[new_stream.stream_id] = new_stream
         next_stream_id += 2
         print("new_stream.stream_id: ", new_stream.stream_id)
         headers = { ':method': 'GET',
@@ -437,7 +469,8 @@ actor main(env):
     def _on_error(client: Http2Client, message: str):
         print(message)
 
-    def _on_receive(client: Http2Client, http_code: int, payload: bytes):
+    def _on_receive(client: Http2Client, http_headers: dict[str, str], payload: bytes):
+        print(http_headers)
         print(payload)
         env.exit(0)
 
