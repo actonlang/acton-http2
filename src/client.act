@@ -225,24 +225,27 @@ class Response:
     data: bytes
     outstanding_streams: dict[u32, u32]
 
-    #def __init__(on_receive: action(Http2Client, dict[str, str], bytes) -> None):
-    #    self.headers = {}
-    #    self.data = b''
-    #    self.on_receive = on_receive
-    #    self.await_response_stream = False
+    def __init__(self, on_receive: action(Http2Client, dict[str, str], bytes) -> None):
+        self.headers = {}
+        self.data = b''
+        self.on_receive = on_receive
+        self.outstanding_streams = {}
 
-    #def stream_response(self, stream_id, headers, data) -> bool:
-    #    for header in headers.items():
-    #        self.headers[header[0]] = header[1]
-    #    self.recv_buffer += data
+    def stream_response(self, stream_id: u32, headers: dict[str, str], data: bytes) -> bool:
+        for header_name, header_val in headers.items():
+            self.headers[header_name] = header_val
 
-    #    self.child_stream_status[stream_id] = False
+        new_data: bytes = bytes(self.data)
+        new_data += data
+        self.data = new_data
 
-    #    for waiting in self.outstanding_streams.values():
-    #        if waiting:
-    #            return False
+        self.outstanding_streams[stream_id] = False
 
-    #    return True
+        for waiting in self.outstanding_streams.values():
+            if waiting:
+                return False
+
+        return True
 
 class Stream:
     stream_id: u32
