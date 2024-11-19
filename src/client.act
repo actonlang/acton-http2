@@ -220,7 +220,7 @@ class WindowUpdateFrame(Frame):
 class ContinuationFrame(Frame):
     pass
 
-class Response:
+class Response(object):
     headers: dict[str, str]
     data: bytes
     outstanding_streams: dict[u32, u32]
@@ -247,7 +247,7 @@ class Response:
 
         return True
 
-class Stream:
+class Stream(object):
     stream_id: u32
     #on_receive: action(Http2Client, int, bytes) -> None
     client: Http2Client
