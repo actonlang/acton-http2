@@ -259,7 +259,11 @@ class Stream(object):
 
     def receive_frame(self, frame: Frame) -> (list[Frame], bool, u32):
         if isinstance(frame, PushPromiseFrame):
+            self.fields_buffer += frame.field_data
             return ([], False, frame.promised_stream_id)
+        elif isinstance(frame, DataFrame):
+            self.data_buffer += frame.data
+            return [], frame.end_stream, 0
         elif isinstance(frame, HeadersFrame):
             self.fields_buffer += frame.field_data
             return [], frame.end_stream, 0
@@ -407,16 +411,11 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
                 if not frame.ack:
                     send_queue.append(SettingsFrame({}, True))
             elif isinstance(frame, GoAwayFrame):
-                print('Received GOAWAY frame with Last-Stream-ID ', frame.last_stream_id,
-                      ' and error code ', frame.error_code)
+                print('Received GOAWAY frame with Last-Stream-ID', frame.last_stream_id,
+                      ' and error code', frame.error_code)
             else:
-                print('Received frame ', frame)
+                print('Received frame', frame)
                 dest_stream = streams[frame.stream_id]
-                #for id, stream in streams.items():
-                #    #print("Stream keyed to id", id)
-                #    #print("Frame stream_id", frame.stream_id, "match to key", frame.stream_id == id)
-                #    if frame.stream_id == id:
-                #        dest_stream = stream
                 dest_response = responses[frame.stream_id]
                 reply_frames, end_stream, new_stream_id = dest_stream.receive_frame(frame)
                 for frame in reply_frames:
