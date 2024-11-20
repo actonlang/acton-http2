@@ -6,7 +6,7 @@ CLIENT_PREFACE: bytes = b'PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n'
 
 class Frame:
     def __init__(self):
-        self.stream_id = -1
+        self.stream_id = 0
 
     def __str__(self):
         return 'Frame()'
@@ -235,9 +235,7 @@ class Response(object):
         for header_name, header_val in headers.items():
             self.headers[header_name] = header_val
 
-        new_data: bytes = bytes(self.data)
-        new_data += data
-        self.data = new_data
+        self.data += data
 
         self.outstanding_streams[stream_id] = False
 
@@ -251,18 +249,22 @@ class Stream(object):
     stream_id: u32
     #on_receive: action(Http2Client, int, bytes) -> None
     client: Http2Client
-    recv_buffer: bytes
-    awaiting_response_stream: bool
+    fields_buffer: bytes
+    data_buffer: bytes
 
     def __init__(self, stream_id: u32):
         self.stream_id = stream_id
-        self.recv_buffer = b''
+        self.fields_buffer = b''
+        self.data_buffer = b''
 
-    def receive_frame(self, frame: Frame) -> (bool, u32):
+    def receive_frame(self, frame: Frame) -> (list[Frame], bool, u32):
         if isinstance(frame, PushPromiseFrame):
-            return (False, frame.promised_stream_id)
+            return ([], False, frame.promised_stream_id)
+        elif isinstance(frame, HeadersFrame):
+            self.fields_buffer += frame.field_data
+            return [], frame.end_stream, 0
         else:
-            return (False, 0)
+            return ([], False, 0)
 
 def decode_frame(buffer: bytes) -> (?Frame, int):
     length = (buffer[0] << 16) + (buffer[1] << 8) + buffer[2]
@@ -273,7 +275,7 @@ def decode_frame(buffer: bytes) -> (?Frame, int):
 
     buffer = buffer[9:]
     remaining_length = len(buffer)
-    print('Decoding frame of type ', type, ' for stream ', stream_id, ' with length ', length)
+    #print('Decoding frame of type ', type, ' for stream ', stream_id, ' with length ', length)
     if remaining_length < length:
         print('Incomplete frame data in buffer (', remaining_length, '/', length, ' bytes received)')
         return None, 0
@@ -348,8 +350,8 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
     var recv_buffer = b''
     var send_queue: list[Frame] = []
     var next_stream_id: u32 = 1
-    var streams = {}
-    var responses = {}
+    var streams: dict[u32, Stream] = {}
+    var responses: dict[u32, Response] = {}
     var inflater = hpack.Inflater()
     var deflater = hpack.Deflater()
     var ready: bool = False
@@ -410,9 +412,22 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
             else:
                 print('Received frame ', frame)
                 dest_stream = streams[frame.stream_id]
-                stream_done, new_stream_id = dest_stream.receive_frame(frame)
+                #for id, stream in streams.items():
+                #    #print("Stream keyed to id", id)
+                #    #print("Frame stream_id", frame.stream_id, "match to key", frame.stream_id == id)
+                #    if frame.stream_id == id:
+                #        dest_stream = stream
+                dest_response = responses[frame.stream_id]
+                reply_frames, end_stream, new_stream_id = dest_stream.receive_frame(frame)
+                for frame in reply_frames:
+                    send_queue.append(frame)
                 if new_stream_id > 0:
+                    print("Launch new stream with id", new_stream_id)
                     streams[new_stream_id] = Stream(new_stream_id)
+                    responses[new_stream_id] = dest_response
+                if end_stream:
+                    if dest_response.stream_response(dest_stream.stream_id, inflater.inflate(dest_stream.fields_buffer), dest_stream.data_buffer):
+                        dest_response.on_receive(self, dest_response.headers, dest_response.data)
 
         _send_frames()
 
@@ -435,8 +450,10 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
     def get(path: str, on_receive: action(Http2Client, dict[str, str], bytes) -> None):
         print("next_stream_id: ", next_stream_id)
         new_stream: Stream = Stream(u32(next_stream_id))
+        new_response: Response = Response(on_receive)
         print("new_stream.stream_id: ", new_stream.stream_id)
         streams[new_stream.stream_id] = new_stream
+        responses[new_stream.stream_id] = new_response
         next_stream_id += 2
         print("new_stream.stream_id: ", new_stream.stream_id)
         headers = { ':method': 'GET',
