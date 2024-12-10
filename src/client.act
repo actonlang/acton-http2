@@ -259,7 +259,6 @@ class Stream(object):
 
     def receive_frame(self, frame: Frame) -> (list[Frame], bool, u32):
         if isinstance(frame, PushPromiseFrame):
-            self.fields_buffer += frame.field_data
             return ([], False, frame.promised_stream_id)
         elif isinstance(frame, DataFrame):
             self.data_buffer += frame.data
@@ -346,6 +345,7 @@ def decode_frame(buffer: bytes) -> (?Frame, int):
         return GoAwayFrame(last_stream_id, error_code, debug_data), (length + 9)
         
         
+    print("Unknown frame type", type)
     return None, 0
 
 
@@ -422,9 +422,14 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
                     send_queue.append(frame)
                 if new_stream_id > 0:
                     print("Launch new stream with id", new_stream_id)
+                    print("Stream", frame.stream_id, "headers:", inflater.inflate(dest_stream.fields_buffer))
+                    print("Stream", frame.stream_id, " data:", dest_stream.data_buffer)
                     streams[new_stream_id] = Stream(new_stream_id)
                     responses[new_stream_id] = dest_response
                 if end_stream:
+                    print("Stream", frame.stream_id, "ended")
+                    print(" headers:", inflater.inflate(dest_stream.fields_buffer))
+                    print(" data:", dest_stream.data_buffer)
                     if dest_response.stream_response(dest_stream.stream_id, inflater.inflate(dest_stream.fields_buffer), dest_stream.data_buffer):
                         dest_response.on_receive(self, dest_response.headers, dest_response.data)
 
@@ -463,7 +468,7 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
         header_data = deflater.deflate(headers)
         print("New stream id: ", new_stream.stream_id)
         print("Compressed header data: ", header_data)
-        header_frame = HeadersFrame(header_data, 0, new_stream.stream_id, False, True, False)
+        header_frame = HeadersFrame(header_data, 0, new_stream.stream_id, False, True, True)
 
         send_queue.append(header_frame)
         if ready:
