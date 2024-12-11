@@ -250,11 +250,13 @@ class Stream(object):
     #on_receive: action(Http2Client, int, bytes) -> None
     client: Http2Client
     fields_buffer: bytes
+    pp_fields_buffer: bytes
     data_buffer: bytes
 
     def __init__(self, stream_id: u32):
         self.stream_id = stream_id
         self.fields_buffer = b''
+        self.pp_fields_buffer = b''
         self.data_buffer = b''
 
     def receive_frame(self, frame: Frame) -> (list[Frame], bool, u32):
@@ -422,7 +424,7 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
                     send_queue.append(frame)
                 if new_stream_id > 0:
                     print("Launch new stream with id", new_stream_id)
-                    print("Stream", frame.stream_id, "headers:", inflater.inflate(dest_stream.fields_buffer))
+                    print("Stream", frame.stream_id, "headers:", inflater.inflate(dest_stream.pp_fields_buffer))
                     print("Stream", frame.stream_id, " data:", dest_stream.data_buffer)
                     streams[new_stream_id] = Stream(new_stream_id)
                     responses[new_stream_id] = dest_response
