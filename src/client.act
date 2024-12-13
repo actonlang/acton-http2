@@ -215,7 +215,27 @@ class GoAwayFrame(Frame):
         return 'GoAwayFrame(last_stream_id=' + str(self.last_stream_id) + ', error_code=' + str(self.error_code) + ', debug_data=' + str(self.debug_data) + ')'
 
 class WindowUpdateFrame(Frame):
-    pass
+    def __init__(self, increment_size: u32, stream_id: u32):
+        self.increment_size = increment_size
+        self.stream_id = stream_id
+
+    def serialize(self) -> bytes:
+        serialized = b''
+
+        # Length 0x4
+        serialized += bytes([0x00, 0x00, 0x04])
+        # Frame type
+        serialized += bytes([0x08])
+
+        # Blank flags
+        serialized += bytes([0x00])
+
+        serialized += bytes([int((self.stream_id & 0x7F000000) >> 24), int((self.stream_id & 0xFF0000) >> 16), int((self.stream_id & 0xFF00) >> 8), int(self.stream_id & 0xFF)])
+
+        serialized += bytes([int((self.increment_size & 0x7F000000) >> 24), int((self.increment_size & 0xFF0000) >> 16), int((self.increment_size & 0xFF00) >> 8), int(self.increment_size & 0xFF)])
+
+        return serialized
+        
 
 class ContinuationFrame(Frame):
     pass
@@ -261,10 +281,11 @@ class Stream(object):
 
     def receive_frame(self, frame: Frame) -> (list[Frame], bool, u32):
         if isinstance(frame, PushPromiseFrame):
-            return ([], False, frame.promised_stream_id)
+            self.pp_fields_buffer += frame.field_data
+            return ([WindowUpdateFrame(0x7fffffff, frame.promised_stream_id)], False, frame.promised_stream_id)
         elif isinstance(frame, DataFrame):
             self.data_buffer += frame.data
-            return [], frame.end_stream, 0
+            return [WindowUpdateFrame(0x7fffffff, self.stream_id)], frame.end_stream, 0
         elif isinstance(frame, HeadersFrame):
             self.fields_buffer += frame.field_data
             return [], frame.end_stream, 0
@@ -358,6 +379,8 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
     var next_stream_id: u32 = 1
     var streams: dict[u32, Stream] = {}
     var responses: dict[u32, Response] = {}
+    var promised_pushes: list[(dict[str, str], Stream)] = []
+    var ready_pushes: list[(dict[str, str], Stream)] = []
     var inflater = hpack.Inflater()
     var deflater = hpack.Deflater()
     var ready: bool = False
@@ -425,9 +448,8 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
                 if new_stream_id > 0:
                     print("Launch new stream with id", new_stream_id)
                     print("Stream", frame.stream_id, "headers:", inflater.inflate(dest_stream.pp_fields_buffer))
-                    print("Stream", frame.stream_id, " data:", dest_stream.data_buffer)
                     streams[new_stream_id] = Stream(new_stream_id)
-                    responses[new_stream_id] = dest_response
+                    #responses[new_stream_id] = dest_response
                 if end_stream:
                     print("Stream", frame.stream_id, "ended")
                     print(" headers:", inflater.inflate(dest_stream.fields_buffer))
