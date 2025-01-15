@@ -500,6 +500,31 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
 
         #on_receive(self, 418, b'I am a teapot')
 
+    def post(path: str, body: bytes, on_receive: action(Http2Client, dict[str, str], bytes) -> None):
+        print("next_stream_id: ", next_stream_id)
+        new_stream: Stream = Stream(u32(next_stream_id))
+        print("new_stream.stream_id: ", new_stream.stream_id)
+        streams[new_stream.stream_id] = new_stream
+        next_stream_id += 2
+        print("new_stream.stream_id: ", new_stream.stream_id)
+        headers = { ':method': 'POST',
+                    ':scheme': 'http',
+                    ':authority': address,
+                    ':path': path }
+        new_response: Response = Response(headers, on_receive)
+        responses[new_stream.stream_id] = new_response
+
+        header_data = deflater.deflate(headers)
+        print("New stream id: ", new_stream.stream_id)
+        print("Compressed header data: ", header_data)
+        header_frame = HeadersFrame(header_data, 0, new_stream.stream_id, False, True, True)
+
+        send_queue.append(header_frame)
+        if ready:
+            _send_frames()
+
+        #on_receive(self, 418, b'I am a teapot')
+
     _connect()
 
 def _test_get(env: Env):
