@@ -245,7 +245,8 @@ class Response(object):
     data: bytes
     outstanding_streams: dict[u32, u32]
 
-    def __init__(self, on_receive: action(Http2Client, dict[str, str], bytes) -> None):
+    def __init__(self, request_headers: dict[str, str], on_receive: action(Http2Client, dict[str, str], bytes) -> None):
+        self.request_headers = request_headers
         self.headers = {}
         self.data = b''
         self.on_receive = on_receive
@@ -380,7 +381,6 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
     var streams: dict[u32, Stream] = {}
     var responses: dict[u32, Response] = {}
     var promised_pushes: list[(dict[str, str], Stream)] = []
-    var ready_pushes: list[(dict[str, str], Stream)] = []
     var inflater = hpack.Inflater()
     var deflater = hpack.Deflater()
     var ready: bool = False
@@ -478,16 +478,16 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
     def get(path: str, on_receive: action(Http2Client, dict[str, str], bytes) -> None):
         print("next_stream_id: ", next_stream_id)
         new_stream: Stream = Stream(u32(next_stream_id))
-        new_response: Response = Response(on_receive)
         print("new_stream.stream_id: ", new_stream.stream_id)
         streams[new_stream.stream_id] = new_stream
-        responses[new_stream.stream_id] = new_response
         next_stream_id += 2
         print("new_stream.stream_id: ", new_stream.stream_id)
         headers = { ':method': 'GET',
                     ':scheme': 'http',
                     ':authority': address,
                     ':path': path }
+        new_response: Response = Response(headers, on_receive)
+        responses[new_stream.stream_id] = new_response
 
         header_data = deflater.deflate(headers)
         print("New stream id: ", new_stream.stream_id)
