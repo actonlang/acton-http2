@@ -384,6 +384,9 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
     var inflater = hpack.Inflater()
     var deflater = hpack.Deflater()
     var ready: bool = False
+    # safe constant for max size for now
+    # should be configurable in settings
+    var max_frame_size = 16384
 
     var tcp_conn: ?net.TCPConnection = None
 
@@ -517,13 +520,18 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
         header_data = deflater.deflate(headers)
         print("New stream id: ", new_stream.stream_id)
         print("Compressed header data: ", header_data)
-        header_frame = HeadersFrame(header_data, 0, new_stream.stream_id, False, True, True)
+        header_frame = HeadersFrame(header_data, 0, new_stream.stream_id, False, True, False)
 
         send_queue.append(header_frame)
+
+        while len(body) > max_frame_size:
+             send_queue.append(DataFrame(body[:max_frame_size], 0, new_stream.stream_id, False))
+             body = body[max_frame_size:]
+
+        send_queue.append(DataFrame(body, 0, new_stream.stream_id, True))
+
         if ready:
             _send_frames()
-
-        #on_receive(self, 418, b'I am a teapot')
 
     _connect()
 
