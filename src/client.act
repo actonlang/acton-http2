@@ -235,6 +235,9 @@ class WindowUpdateFrame(Frame):
         serialized += bytes([int((self.increment_size & 0x7F000000) >> 24), int((self.increment_size & 0xFF0000) >> 16), int((self.increment_size & 0xFF00) >> 8), int(self.increment_size & 0xFF)])
 
         return serialized
+
+    def __str__(self) -> str:
+        return 'WindowUpdateFrame(increment_size=' + str(self.increment_size) + ', stream_id=' + str(self.stream_id) + ')'
         
 
 class ContinuationFrame(Frame):
@@ -367,6 +370,10 @@ def decode_frame(buffer: bytes) -> (?Frame, int):
                          (buffer[2] << 2) + buffer[3])
         debug_data = buffer[4:length]
         return GoAwayFrame(last_stream_id, error_code, debug_data), (length + 9)
+    elif type == 8:
+        increment_size = u32((buffer[0] << 24) + (buffer[1] << 16) +
+                                 (buffer[2] << 2) + buffer[3]) & 0x7fffffff
+        return WindowUpdateFrame(increment_size, stream_id), (length + 9)
         
         
     print("Unknown frame type", type)
@@ -441,6 +448,11 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
             elif isinstance(frame, GoAwayFrame):
                 print('Received GOAWAY frame with Last-Stream-ID', frame.last_stream_id,
                       ' and error code', frame.error_code)
+            elif isinstance(frame, WindowUpdateFrame):
+                if frame.stream_id == 0:
+                    print('Received global WINDOW_UPDATE frame with increment size', frame.increment_size)
+                else:
+                    print('Receive WINDOW_UPDATE frame with increment size', frame.increment_size, 'for stream', frame.stream_id)
             else:
                 print('Received frame', frame)
                 dest_stream = streams[frame.stream_id]
@@ -556,6 +568,7 @@ actor main(env):
         env.exit(0)
 
     #139.162.123.134
+    #test_client = Http2Client(net.TCPConnectCap(net.TCPCap(net.NetCap(env.cap))), 'nghttp2.org', 8080, _on_connect, _on_error)
     test_client = Http2Client(net.TCPConnectCap(net.TCPCap(net.NetCap(env.cap))), 'localhost', 8080, _on_connect, _on_error)
 
     #tls_conn = net.TLSConnection(net.TCPConnectCap(net.TCPCap(net.NetCap(env.cap))), 'nghttp2.org', 443, _on_tls_connect, _on_tls_receive, _on_tls_error, _on_remote_close, True)
