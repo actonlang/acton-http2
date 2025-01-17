@@ -1,0 +1,11 @@
+services:
+  nginx:
+    build:
+      dockerfile: nginx.Dockerfile
+
+    ports:
+      - "8080:80"
+
+  testserver:
+    build:
+      dockerfile: testserver.Dockerfile
