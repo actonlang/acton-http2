@@ -493,10 +493,12 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
         pass
 
     def _send_frames():
+        print("Send queue:", send_queue)
         for frame in send_queue:
             if tcp_conn is not None:
-                send_queue.pop()
+                send_queue.pop(0)
                 send_bytes = frame.serialize()
+                print("Sending frame:", frame)
                 print("Sending TCP data: ", send_bytes)
                 tcp_conn.write(send_bytes)
 
