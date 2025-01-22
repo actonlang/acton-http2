@@ -583,5 +583,6 @@ actor main(env):
 
     #tls_conn = net.TLSConnection(net.TCPConnectCap(net.TCPCap(net.NetCap(env.cap))), 'nghttp2.org', 443, _on_tls_connect, _on_tls_receive, _on_tls_error, _on_remote_close, True)
     #after 10: exit(env)
-    test_client.get('/testget', _on_receive)
+    #test_client.get('/testget', _on_receive)
+    test_client.post('/testpost', b'foobar', _on_receive)
     #test_client.get('/', _on_receive)
