@@ -297,6 +297,9 @@ class Stream(object):
             return ([], False, 0)
 
 def decode_frame(buffer: bytes) -> (?Frame, int):
+    if len(buffer) < 10:
+        return None, 0
+
     length = (buffer[0] << 16) + (buffer[1] << 8) + buffer[2]
     type = buffer[3]
     flags = u32(buffer[4])
@@ -432,15 +435,22 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
         _send_frames()
 
     def _on_tcp_receive(con: net.TCPConnection, data: bytes) -> None:
-        #print("Received TCP data:", data)
+        print("Received TCP data:", data)
         recv_buffer += data
-        #print('First 100 bytes of recv_buffer: ', recv_buffer[:100])
+        print('First 100 bytes of recv_buffer: ', recv_buffer[:100])
+
+        frames = []
         frame, consumed_bytes = decode_frame(recv_buffer)
+        while frame is not None:
+            if isinstance(frame, Frame):
+                frames.append(frame)
+                recv_buffer = recv_buffer[consumed_bytes:]
+            frame, consumed_bytes = decode_frame(recv_buffer)
         
-        if frame is not None:
-            recv_buffer = recv_buffer[consumed_bytes:]
+        for frame in frames:
             if isinstance(frame, SettingsFrame):
-                print('Received settings frame')
+                print('Received settings frame', frame)
+                #print(len(frame.settings), 'settings in frame')
                 for setting in frame.settings.items():
                     print('  setting ', setting)
                 if not frame.ack:
@@ -453,7 +463,7 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
                     print('Received global WINDOW_UPDATE frame with increment size', frame.increment_size)
                 else:
                     print('Receive WINDOW_UPDATE frame with increment size', frame.increment_size, 'for stream', frame.stream_id)
-            else:
+            elif isinstance(frame, Frame):
                 print('Received frame', frame)
                 dest_stream = streams[frame.stream_id]
                 dest_response = responses[frame.stream_id]
@@ -568,9 +578,10 @@ actor main(env):
         env.exit(0)
 
     #139.162.123.134
-    #test_client = Http2Client(net.TCPConnectCap(net.TCPCap(net.NetCap(env.cap))), 'nghttp2.org', 8080, _on_connect, _on_error)
+    #test_client = Http2Client(net.TCPConnectCap(net.TCPCap(net.NetCap(env.cap))), 'nghttp2.org', 80, _on_connect, _on_error)
     test_client = Http2Client(net.TCPConnectCap(net.TCPCap(net.NetCap(env.cap))), 'localhost', 8080, _on_connect, _on_error)
 
     #tls_conn = net.TLSConnection(net.TCPConnectCap(net.TCPCap(net.NetCap(env.cap))), 'nghttp2.org', 443, _on_tls_connect, _on_tls_receive, _on_tls_error, _on_remote_close, True)
     #after 10: exit(env)
     test_client.get('/testget', _on_receive)
+    #test_client.get('/', _on_receive)
