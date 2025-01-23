@@ -419,7 +419,7 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
         #on_error(self, error)
         pass
 
-    def _on_tcp_remote_close(con: net.TCPListenConnection) -> None:
+    def _on_tcp_remote_close(con: net.TCPConnection) -> None:
         #on_remote_close(self)
         pass
 
