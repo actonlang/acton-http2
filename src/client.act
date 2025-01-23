@@ -241,7 +241,36 @@ class WindowUpdateFrame(Frame):
         
 
 class ContinuationFrame(Frame):
-    pass
+    def __init__(self, field_data: bytes, stream_id: u32, end_headers: bool):
+        self.field_data = field_data
+        self.stream_id = stream_id
+        self.end_headers = end_headers
+
+    def __str__(self):
+        data_excerpt = self.field_data if len(self.field_data) < 20 else self.field_data[:20]
+        return 'ContinuationFrame(field_data=' + str(data_excerpt) + ', stream_id=' + str(self.stream_id) + ', end_headers=' + str(self.end_headers) + ')'
+
+    def serialize(self) -> bytes:
+        serialized = b''
+
+        length = len(self.field_data)
+
+        flags:u32 = 0x0
+
+        if self.end_headers:
+            flags |= END_HEADERS
+
+        length32: u32 = u32(length)
+
+        serialized += bytes([int((length32 & 0xFF0000) >> 16), int((length32 & 0xFF00) >> 8), int(length32 & 0xFF)])
+        # Type field
+        serialized += bytes([0x01])
+        serialized += bytes([int(flags)])
+        serialized += bytes([int((self.stream_id & 0x7F000000) >> 24), int((self.stream_id & 0xFF0000) >> 16), int((self.stream_id & 0xFF00) >> 8), int(self.stream_id & 0xFF)])
+        serialized += self.field_data
+
+        return serialized
+
 
 class Response(object):
     headers: dict[str, str]
@@ -377,6 +406,12 @@ def decode_frame(buffer: bytes) -> (?Frame, int):
         increment_size = u32((buffer[0] << 24) + (buffer[1] << 16) +
                                  (buffer[2] << 2) + buffer[3]) & 0x7fffffff
         return WindowUpdateFrame(increment_size, stream_id), (length + 9)
+    elif type == 9:
+        # CONTINUATION
+        field_data_len = length
+        end_headers = bool(flags & END_HEADERS)
+        return ContinuationFrame(buffer[:field_data_len], stream_id, end_headers), (length + 9)
+        #return None, 0
         
         
     print("Unknown frame type", type)
