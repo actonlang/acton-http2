@@ -423,7 +423,8 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
     var send_queue: list[Frame] = []
     var next_stream_id: u32 = 1
     var streams: dict[u32, Stream] = {}
-    var responses: dict[u32, Response] = {}
+    #var responses: dict[u32, Response] = {}
+    var response_cbs: dict[u32, action(Http2Client, dict[str, str], bytes) -> None] = {}
     var promised_pushes: list[(dict[str, str], Stream)] = []
     var inflater = hpack.Inflater()
     var deflater = hpack.Deflater()
@@ -500,7 +501,6 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
             elif isinstance(frame, Frame):
                 print('Received frame', frame)
                 dest_stream = streams[frame.stream_id]
-                dest_response = responses[frame.stream_id]
                 reply_frames, end_stream, new_stream_id = dest_stream.receive_frame(frame)
                 for frame in reply_frames:
                     send_queue.append(frame)
@@ -508,13 +508,13 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
                     print("Launch new stream with id", new_stream_id)
                     print("Stream", frame.stream_id, "headers:", inflater.inflate(dest_stream.pp_fields_buffer))
                     streams[new_stream_id] = Stream(new_stream_id)
-                    #responses[new_stream_id] = dest_response
+                    promised_pushes.append((inflater.inflate(dest_stream.pp_fields_buffer), streams[new_stream_id]))
                 if end_stream:
                     print("Stream", frame.stream_id, "ended")
                     print(" headers:", inflater.inflate(dest_stream.fields_buffer))
                     print(" data:", dest_stream.data_buffer)
-                    if dest_response.stream_response(dest_stream.stream_id, inflater.inflate(dest_stream.fields_buffer), dest_stream.data_buffer):
-                        dest_response.on_response(self, dest_response.headers, dest_response.data)
+                    if dest_stream.stream_id in response_cbs:
+                        response_cbs[dest_stream.stream_id](self, inflater.inflate(dest_stream.fields_buffer), dest_stream.data_buffer)
 
         _send_frames()
 
@@ -547,8 +547,9 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
                     ':scheme': 'http',
                     ':authority': address,
                     ':path': path }
-        new_response: Response = Response(headers, on_response)
-        responses[new_stream.stream_id] = new_response
+        #new_response: Response = Response(headers, on_response)
+        #responses[new_stream.stream_id] = new_response
+        response_cbs[new_stream.stream_id] = on_response
 
         header_data = deflater.deflate(headers)
         print("New stream id: ", new_stream.stream_id)
@@ -572,8 +573,9 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
                     ':scheme': 'http',
                     ':authority': address,
                     ':path': path }
-        new_response: Response = Response(headers, on_response)
-        responses[new_stream.stream_id] = new_response
+        #new_response: Response = Response(headers, on_response)
+        #responses[new_stream.stream_id] = new_response
+        response_cbs[new_stream.stream_id] = on_response
 
         header_data = deflater.deflate(headers)
         print("New stream id: ", new_stream.stream_id)
