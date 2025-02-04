@@ -143,8 +143,7 @@ class SettingsFrame(Frame):
     def serialize(self) -> bytes:
         serialized = b''
 
-        #length: int = len(self.settings.items()) * 6
-        length = 0
+        length: int = len(self.settings) * 6
 
         flags: int = 0x01 if self.ack else 0x00
 
