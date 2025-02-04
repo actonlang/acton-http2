@@ -203,7 +203,30 @@ class PushPromiseFrame(Frame):
         return serialized
 
 class PingFrame(Frame):
-    pass
+    def __init__(self, ack: bool, data: bytes):
+        self.ack = ack
+        self.data = data
+
+    def __str__(self) -> str:
+        return 'PingFrame(ack=' + str(self.ack) + ', data=' + str(self.data) + ')'
+
+    def serialize(self) -> bytes:
+        serialized = b''
+        flags: int = 0x01 if self.ack else 0x00
+
+        # Length 0x8
+        serialized += bytes([0x00, 0x00, 0x08])
+        # Frame type
+        serialized += bytes([0x06])
+
+        serialized += bytes([flags])
+
+        # Stream ID always 0
+        serialized += bytes([0x00, 0x00, 0x00, 0x00])
+
+        serialized += self.data
+
+        return serialized
 
 class GoAwayFrame(Frame):
     def __init__(self, last_stream_id: u32, error_code: int, debug_data: bytes):
