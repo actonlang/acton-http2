@@ -293,6 +293,17 @@ class ContinuationFrame(Frame):
 
         return serialized
 
+# stream states
+IDLE: int = 0
+OPEN: int = 1
+RESERVED_LOCAL: int = 2
+RESERVED_REMOTE: int = 3
+HALFCLOSED_LOCAL: int = 4
+HALFCLOSED_REMOTE: int = 5
+CLOSED: int = 6
+HEADERS_CONTINUE: int = 7
+PP_CONTINUE: int = 8
+
 
 class Response(object):
     headers: dict[str, str]
@@ -320,31 +331,185 @@ class Response(object):
 
         return True
 
+class StreamState(object):
+    def next_state_recv(self, frame: Frame) -> StreamState:
+        return self
+    def next_state_send(self, frame: Frame) -> StreamState:
+        return self
+
+class IdleState(StreamState):
+    def __init__(self):
+        pass
+    def next_state_recv(self, frame: Frame) -> StreamState:
+        return self
+    def next_state_send(self, frame: Frame) -> StreamState:
+        return self
+
+class OpenState(StreamState):
+    def __init__(self):
+        pass
+    def next_state_recv(self, frame: Frame) -> StreamState:
+        if isinstance(frame, DataFrame):
+            if frame.end_stream:
+                return HalfClosedRemoteState()
+            else:
+                return self
+        elif isinstance(frame, HeadersFrame):
+            next_state: StreamState = self
+
+            if frame.end_stream:
+                next_state = HalfClosedRemoteState()
+            if not frame.end_headers:
+                next_state = HeadersContinueState(next_state)
+
+            return next_state
+        elif isinstance(frame, RstStreamFrame):
+            return ClosedState()
+        else:
+            return self
+    def next_state_send(self, frame: Frame) -> StreamState:
+        if isinstance(frame, DataFrame):
+            if frame.end_stream:
+                return HalfClosedLocalState()
+            else:
+                return self
+        elif isinstance(frame, HeadersFrame):
+            next_state: StreamState = self
+
+            if frame.end_stream:
+                next_state = HalfClosedLocalState()
+
+            return next_state
+        elif isinstance(frame, RstStreamFrame):
+            return ClosedState()
+        else:
+            return self
+
+class ReservedLocalState(StreamState):
+    def __init__(self):
+        pass
+    def next_state_recv(self, frame: Frame) -> StreamState:
+        return self
+    def next_state_send(self, frame: Frame) -> StreamState:
+        return self
+
+class ReservedRemoteState(StreamState):
+    def __init__(self):
+        pass
+    def next_state_recv(self, frame: Frame) -> StreamState:
+        return self
+    def next_state_send(self, frame: Frame) -> StreamState:
+        return self
+
+class HalfClosedLocalState(StreamState):
+    def __init__(self):
+        pass
+    def next_state_recv(self, frame: Frame) -> StreamState:
+        if isinstance(frame, DataFrame):
+            if frame.end_stream:
+                return ClosedState()
+            else:
+                return self
+        return self
+    def next_state_send(self, frame: Frame) -> StreamState:
+        return self
+
+class HalfClosedRemoteState(StreamState):
+    def __init__(self):
+        pass
+    def next_state_recv(self, frame: Frame) -> StreamState:
+        return self
+    def next_state_send(self, frame: Frame) -> StreamState:
+        return self
+
+class ClosedState(StreamState):
+    def __init__(self):
+        pass
+    def next_state_recv(self, frame: Frame) -> StreamState:
+        return self
+    def next_state_send(self, frame: Frame) -> StreamState:
+        return self
+
+class HeadersContinueState(StreamState):
+    def __init__(self, follow_state):
+        self.follow_state = follow_state
+
+    def next_state_recv(self, frame: Frame) -> StreamState:
+        if isinstance(frame, ContinuationFrame):
+            if frame.end_headers:
+                return self.follow_state
+            else:
+                return self
+        else:
+            return InvalidState()
+
+    def next_state_send(self, frame: Frame) -> StreamState:
+        return self
+
+class PPContinueState(StreamState):
+    def __init__(self, follow_state):
+        self.follow_state = follow_state
+
+    def next_state_recv(self, frame: Frame) -> StreamState:
+        if isinstance(frame, ContinuationFrame):
+            if frame.end_headers:
+                return self.follow_state
+            else:
+                return self
+        else:
+            return InvalidState()
+
+    def next_state_send(self, frame: Frame) -> StreamState:
+        return self
+
+class InvalidState(StreamState):
+    def __init__(self):
+        pass
+    def next_state_recv(self, frame: Frame) -> StreamState:
+        return self
+    def next_state_send(self, frame: Frame) -> StreamState:
+        return self
+
 class Stream(object):
     stream_id: u32
     client: Http2Client
+    state: StreamState
     fields_buffer: bytes
     pp_fields_buffer: bytes
     data_buffer: bytes
 
-    def __init__(self, stream_id: u32):
+    def __init__(self, stream_id: u32, init_state: StreamState = OpenState()):
         self.stream_id = stream_id
         self.fields_buffer = b''
         self.pp_fields_buffer = b''
         self.data_buffer = b''
+        self.state = init_state
 
     def receive_frame(self, frame: Frame) -> (list[Frame], bool, u32):
+        self.state = self.state.next_state_recv(frame)
+
+        reply_frames = []
+        end_stream = False
+        promised_stream_id = 0
+
         if isinstance(frame, PushPromiseFrame):
             self.pp_fields_buffer += frame.field_data
-            return ([WindowUpdateFrame(0x7fffffff, frame.promised_stream_id)], False, frame.promised_stream_id)
+            reply_frames.append(WindowUpdateFrame(0x7fffffff, frame.promised_stream_id))
+            promised_stream_id = frame.promised_stream_id
         elif isinstance(frame, DataFrame):
             self.data_buffer += frame.data
-            return [WindowUpdateFrame(0x7fffffff, self.stream_id)], frame.end_stream, 0
+            reply_frames.append(WindowUpdateFrame(0x7fffffff, self.stream_id))
+            end_stream = frame.end_stream
         elif isinstance(frame, HeadersFrame):
             self.fields_buffer += frame.field_data
-            return [], frame.end_stream, 0
-        else:
-            return ([], False, 0)
+            if frame.end_stream:
+                pass
+            end_stream = (frame.end_stream and frame.end_headers)
+        elif isinstance(frame, ContinuationFrame):
+            if isinstance(self.state, ClosedState):
+                end_stream = True
+
+        return reply_frames, end_stream, promised_stream_id
 
 def decode_frame(buffer: bytes) -> (?Frame, int):
     if len(buffer) < 10:
