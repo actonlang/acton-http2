@@ -490,7 +490,7 @@ class Stream(object):
         self.state = init_state
 
     def receive_frame(self, frame: Frame) -> (list[Frame], bool, u32):
-        self.state = self.state.next_state_recv(frame)
+        following_state = self.state.next_state_recv(frame)
 
         reply_frames = []
         end_stream = False
@@ -510,7 +510,11 @@ class Stream(object):
                 pass
             end_stream = (frame.end_stream and frame.end_headers)
         elif isinstance(frame, ContinuationFrame):
-            if isinstance(self.state, ClosedState):
+            if isinstance(self.state, HeadersContinueState):
+                self.fields_buffer += frame.field_data
+            if isinstance(self.state, PPContinueState):
+                self.pp_fields_buffer += frame.field_data
+            if isinstance(following_state, ClosedState):
                 end_stream = True
 
         return reply_frames, end_stream, promised_stream_id
