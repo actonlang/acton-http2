@@ -621,6 +621,7 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
     var streams: dict[u32, Stream] = {}
     #var responses: dict[u32, Response] = {}
     var response_cbs: dict[u32, action(Http2Client, dict[str, str], bytes) -> None] = {}
+    var raw_cbs: dict[u32, (action(Http2Client, dict[str, str]) -> None, action(Http2Client, bytes) -> None)] = {}
     var promised_pushes: list[(dict[str, str], Stream)] = []
     var inflater = hpack.Inflater()
     var deflater = hpack.Deflater()
@@ -736,6 +737,7 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
         new_stream: Stream = Stream(u32(next_stream_id))
 
         streams[new_stream.stream_id] = new_stream
+        raw_cbs[new_stream.stream_id] = (on_header_recv, on_data_recv)
         next_stream_id += 2
 
         return new_stream.stream_id
