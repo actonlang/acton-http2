@@ -559,14 +559,14 @@ def decode_frame(buffer: bytes) -> (?Frame, int):
             field_data_len -= (1 + pad_len)
         if priority:
             stream_dependency = u32((buffer[0] << 24) + (buffer[1] << 16) +
-                                    (buffer[2] << 2) + buffer[3]) & 0x7fffffff
+                                    (buffer[2] << 8) + buffer[3]) & 0x7fffffff
             weight = buffer[4]
             buffer = buffer[5:]
             field_data_len -= 5
         return HeadersFrame(buffer[:field_data_len], pad_len, stream_id, priority, end_headers, end_stream), (length + 9)
     elif type == 3:
         error_code = ((buffer[0] << 24) + (buffer[1] << 16) +
-                      (buffer[2] << 2) + buffer[3])
+                      (buffer[2] << 8) + buffer[3])
         return RstStreamFrame(error_code, stream_id), 13
     elif type == 4:
         # SETTINGS
@@ -587,19 +587,19 @@ def decode_frame(buffer: bytes) -> (?Frame, int):
             buffer = buffer[1:]
             field_data_len -= 1
         promised_stream_id = u32((buffer[0] << 24) + (buffer[1] << 16) +
-                                 (buffer[2] << 2) + buffer[3]) & 0x7fffffff
+                                 (buffer[2] << 8) + buffer[3]) & 0x7fffffff
         buffer = buffer[4:]
         return PushPromiseFrame(promised_stream_id, buffer[:field_data_len], pad_len, stream_id, end_headers), (length + 9)
     elif type == 7:
         last_stream_id = u32((buffer[0] << 24) + (buffer[1] << 16) +
-                             (buffer[2] << 2) + buffer[3]) & 0x7fffffff
+                             (buffer[2] << 8) + buffer[3]) & 0x7fffffff
         error_code = ((buffer[0] << 24) + (buffer[1] << 16) +
-                         (buffer[2] << 2) + buffer[3])
+                         (buffer[2] << 8) + buffer[3])
         debug_data = buffer[4:length]
         return GoAwayFrame(last_stream_id, error_code, debug_data), (length + 9)
     elif type == 8:
         increment_size = u32((buffer[0] << 24) + (buffer[1] << 16) +
-                                 (buffer[2] << 2) + buffer[3]) & 0x7fffffff
+                                 (buffer[2] << 8) + buffer[3]) & 0x7fffffff
         return WindowUpdateFrame(increment_size, stream_id), (length + 9)
     elif type == 9:
         # CONTINUATION
