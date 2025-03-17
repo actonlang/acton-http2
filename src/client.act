@@ -367,6 +367,13 @@ class OpenState(StreamState):
                 next_state = HeadersContinueState(next_state)
 
             return next_state
+        elif isinstance(frame, PushPromiseFrame):
+            next_state: StreamState = self
+
+            if not frame.end_headers:
+                next_state = PPContinueState(next_state, frame.promised_stream_id)
+
+            return next_state
         elif isinstance(frame, RstStreamFrame):
             return ClosedState()
         else:
@@ -451,8 +458,9 @@ class HeadersContinueState(StreamState):
         return self
 
 class PPContinueState(StreamState):
-    def __init__(self, follow_state):
+    def __init__(self, follow_state, promised_stream_id):
         self.follow_state = follow_state
+        self.promised_stream_id = promised_stream_id
 
     def next_state_recv(self, frame: Frame) -> StreamState:
         if isinstance(frame, ContinuationFrame):
@@ -489,11 +497,12 @@ class Stream(object):
         self.data_buffer = b''
         self.state = init_state
 
-    def receive_frame(self, frame: Frame) -> (list[Frame], bool, u32):
+    def receive_frame(self, frame: Frame) -> (list[Frame], bool, bool, u32):
         following_state = self.state.next_state_recv(frame)
 
         reply_frames = []
         end_stream = False
+        end_headers = False
         promised_stream_id = 0
 
         if isinstance(frame, PushPromiseFrame):
@@ -506,8 +515,7 @@ class Stream(object):
             end_stream = frame.end_stream
         elif isinstance(frame, HeadersFrame):
             self.fields_buffer += frame.field_data
-            if frame.end_stream:
-                pass
+            end_headers = frame.end_headers
             end_stream = (frame.end_stream and frame.end_headers)
         elif isinstance(frame, ContinuationFrame):
             if isinstance(self.state, HeadersContinueState):
@@ -518,7 +526,7 @@ class Stream(object):
                 end_stream = True
 
         self.state = following_state
-        return reply_frames, end_stream, promised_stream_id
+        return reply_frames, end_headers, end_stream, promised_stream_id
 
 def decode_frame(buffer: bytes) -> (?Frame, int):
     if len(buffer) < 10:
@@ -698,7 +706,17 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
             elif isinstance(frame, Frame):
                 print('Received frame', frame)
                 dest_stream = streams[frame.stream_id]
-                reply_frames, end_stream, new_stream_id = dest_stream.receive_frame(frame)
+                reply_frames, end_headers, end_stream, new_stream_id = dest_stream.receive_frame(frame)
+
+                if frame.stream_id in raw_cbs:
+                    header_cb, data_cb = raw_cbs[frame.stream_id]
+
+                    if isinstance(frame, DataFrame):
+                        data_cb(self, frame.data)
+
+                    if end_headers and new_stream_id == 0:
+                        header_cb(self, inflater.inflate(dest_stream.fields_buffer))
+
                 for frame in reply_frames:
                     send_queue.append(frame)
                 if new_stream_id > 0:
