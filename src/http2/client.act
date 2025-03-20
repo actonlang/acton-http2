@@ -1,5 +1,5 @@
 import net
-import hpack
+import http2.hpack as hpack
 
 CLIENT_PREFACE: bytes = b'PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n'
 
