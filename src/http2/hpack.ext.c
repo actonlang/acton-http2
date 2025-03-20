@@ -2,7 +2,7 @@
 
 #define DEFAULT_MAX_BUFLEN 4096
 
-void hpackQ___ext_init__() {
+void http2Q_hpackQ___ext_init__() {
 }
 
 void *acton_malloc_cb(size_t size, void *mem_user_data) {
@@ -25,7 +25,7 @@ void *acton_realloc_cb(void *ptr, size_t size, void *mem_user_data) {
     return acton_realloc(ptr, size);
 }
 
-B_NoneType hpackQ_DeflaterD__init_deflater (hpackQ_Deflater self) {
+B_NoneType http2Q_hpackQ_DeflaterD__init_deflater (http2Q_hpackQ_Deflater self) {
     nghttp2_mem *mem = acton_malloc(sizeof(nghttp2_mem));
     *mem = (nghttp2_mem){NULL, acton_malloc_cb, acton_free_cb,
                          acton_calloc_cb, acton_realloc_cb};
@@ -36,7 +36,7 @@ B_NoneType hpackQ_DeflaterD__init_deflater (hpackQ_Deflater self) {
     return B_None;
 }
 
-B_NoneType hpackQ_InflaterD__init_inflater (hpackQ_Inflater self) {
+B_NoneType http2Q_hpackQ_InflaterD__init_inflater (http2Q_hpackQ_Inflater self) {
     nghttp2_mem *mem = acton_malloc(sizeof(nghttp2_mem));
     *mem = (nghttp2_mem){NULL, acton_malloc_cb, acton_free_cb,
 	                 acton_calloc_cb, acton_realloc_cb};
@@ -47,7 +47,7 @@ B_NoneType hpackQ_InflaterD__init_inflater (hpackQ_Inflater self) {
     return B_None;
 }
 
-B_bytes hpackQ_DeflaterD_deflate(hpackQ_Deflater self, B_dict headers) {
+B_bytes http2Q_hpackQ_DeflaterD_deflate(http2Q_hpackQ_Deflater self, B_dict headers) {
     nghttp2_hd_deflater *deflater = (nghttp2_hd_deflater*)fromB_u64(self->_deflater);
 
     B_IteratorD_dict_items iter = $NEW(B_IteratorD_dict_items, headers);
@@ -95,7 +95,7 @@ B_bytes hpackQ_DeflaterD_deflate(hpackQ_Deflater self, B_dict headers) {
     return to$bytes((char*)buf);
 }
 
-B_dict hpackQ_InflaterD_inflate(hpackQ_Inflater self, B_bytes compressed_headers) {
+B_dict http2Q_hpackQ_InflaterD_inflate(http2Q_hpackQ_Inflater self, B_bytes compressed_headers) {
     nghttp2_hd_inflater *inflater = (nghttp2_hd_inflater*)fromB_u64(self->_inflater);
 
     size_t inlen = (size_t)compressed_headers->nbytes;
