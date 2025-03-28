@@ -629,7 +629,7 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
     var streams: dict[u32, Stream] = {}
     #var responses: dict[u32, Response] = {}
     var response_cbs: dict[u32, action(Http2Client, dict[str, str], bytes) -> None] = {}
-    var raw_cbs: dict[u32, (action(Http2Client, dict[str, str]) -> None, action(Http2Client, bytes) -> None)] = {}
+    var raw_cbs: dict[u32, (action(Http2Client, dict[str, str], bool) -> None, action(Http2Client, bytes, bool) -> None)] = {}
     var promised_pushes: list[(dict[str, str], Stream)] = []
     var inflater = hpack.Inflater()
     var deflater = hpack.Deflater()
@@ -712,10 +712,10 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
                     header_cb, data_cb = raw_cbs[frame.stream_id]
 
                     if isinstance(frame, DataFrame):
-                        data_cb(self, frame.data)
+                        data_cb(self, frame.data, end_stream)
 
                     if end_headers and new_stream_id == 0:
-                        header_cb(self, inflater.inflate(dest_stream.fields_buffer))
+                        header_cb(self, inflater.inflate(dest_stream.fields_buffer), end_stream)
 
                 for frame in reply_frames:
                     send_queue.append(frame)
@@ -751,7 +751,7 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
                 print("Sending TCP data: ", send_bytes)
                 tcp_conn.write(send_bytes)
 
-    def start_raw_stream(on_header_recv: action(Http2Client, dict[str, str]) -> None, on_data_recv: action(Http2Client, bytes) -> None) -> u32:
+    def start_raw_stream(on_header_recv: action(Http2Client, dict[str, str], bool) -> None, on_data_recv: action(Http2Client, bytes, bool) -> None) -> u32:
         new_stream: Stream = Stream(u32(next_stream_id))
 
         streams[new_stream.stream_id] = new_stream
