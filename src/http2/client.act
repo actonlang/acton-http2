@@ -621,7 +621,9 @@ def decode_frame(buffer: bytes) -> (?Frame, int):
     return None, 0
 
 
-actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: action(Http2Client) -> None, on_error: action(Http2Client, str) -> None, tls_verify: bool=True, connect_timeout: float=10.0):
+actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: action(Http2Client) -> None, on_error: action(Http2Client, str) -> None, tls: bool, tls_verify: bool=True, connect_timeout: float=10.0):
+
+    scheme = 'https' if tls else 'http'
 
     var recv_buffer = b''
     var send_queue: list[Frame] = []
@@ -638,33 +640,23 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
     # should be configurable in settings
     var max_frame_size = 16384
 
+    var tls_conn: ?net.TLSConnection = None
     var tcp_conn: ?net.TCPConnection = None
 
     def _connect():
-        #tls_port = port if port is not None else 443
+        tls_port = port if port is not None else 443
         tcp_port = port if port is not None else 80
 
-        #tls_conn = net.TLSConnection(cap, address, tls_port, _on_tls_connect, _on_tls_receive, _on_tls_error, _on_remote_close, tls_verify)
-        tcp_conn = net.TCPConnection(cap, address, tcp_port, _on_tcp_connect, _on_tcp_receive, _on_tcp_error, _on_tcp_remote_close)
+        if tls:
+            tls_conn = net.TLSConnection(cap, address, tls_port, _on_tls_connect, _on_tls_receive, _on_tls_error, None, tls_verify, protocols=["h2"])
+        else:
+            tcp_conn = net.TCPConnection(cap, address, tcp_port, _on_tcp_connect, _on_tcp_receive, _on_tcp_error, _on_tcp_remote_close)
 
-    def _on_tls_connect(con: net.TLSConnection) -> None:
-        #on_connect(self)
-        pass
-
-    def _on_tls_receive(con: net.TLSConnection, data: bytes) -> None:
-        #on_receive(self, data)
-        pass
-
-    def _on_tls_error(conn: net.TCPConnection, error: str) -> None:
-        #on_error(self, error)
-        pass
-
-    def _on_tcp_remote_close(con: net.TCPConnection) -> None:
+    def _on_tls_remote_close(con: net.TLSConnection) -> None:
         #on_remote_close(self)
         pass
 
-    def _on_tcp_connect(con: net.TCPConnection) -> None:
-        #on_connect(self)
+    def _on_tls_connect(con: net.TLSConnection) -> None:
         print("Sending TCP data: ", CLIENT_PREFACE)
         con.write(CLIENT_PREFACE)
         
@@ -672,10 +664,38 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
         print("Sending TCP data: ", send_bytes)
         con.write(send_bytes)
         ready = True
+        on_connect(self)
+        _send_frames()
+
+    def _on_tls_receive(con: net.TLSConnection, data: bytes) -> None:
+        print("Received TLS data:", data)
+        _on_receive(data)
+        pass
+
+    def _on_tls_error(conn: net.TLSConnection, error: str) -> None:
+        on_error(self, error)
+        pass
+
+    def _on_tcp_remote_close(con: net.TCPConnection) -> None:
+        #on_remote_close(self)
+        pass
+
+    def _on_tcp_connect(con: net.TCPConnection) -> None:
+        print("Sending TCP data: ", CLIENT_PREFACE)
+        con.write(CLIENT_PREFACE)
+        
+        send_bytes: bytes = SettingsFrame({}).serialize()
+        print("Sending TCP data: ", send_bytes)
+        con.write(send_bytes)
+        ready = True
+        on_connect(self)
         _send_frames()
 
     def _on_tcp_receive(con: net.TCPConnection, data: bytes) -> None:
         print("Received TCP data:", data)
+        _on_receive(data)
+
+    def _on_receive(data: bytes) -> None:
         recv_buffer += data
         print('First 100 bytes of recv_buffer: ', recv_buffer[:100])
 
@@ -734,7 +754,7 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
         _send_frames()
 
     def _on_tcp_error(conn: net.TCPConnection, error: str) -> None:
-        #on_error(self, error)
+        on_error(self, error)
         pass
 
     def _on_remote_close(con: net.TLSConnection) -> None:
@@ -744,11 +764,13 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
     def _send_frames():
         print("Send queue:", send_queue)
         for frame in send_queue:
+            send_queue.pop(0)
+            send_bytes = frame.serialize()
+            print("Sending frame:", frame)
+            if tls_conn is not None:
+                tls_conn.write(send_bytes)
             if tcp_conn is not None:
-                send_queue.pop(0)
-                send_bytes = frame.serialize()
-                print("Sending frame:", frame)
-                print("Sending TCP data: ", send_bytes)
+                #print("Sending TCP data: ", send_bytes)
                 tcp_conn.write(send_bytes)
 
     def start_raw_stream(on_header_recv: action(Http2Client, dict[str, str], bool) -> None, on_data_recv: action(Http2Client, bytes, bool) -> None) -> u32:
@@ -792,7 +814,7 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
         next_stream_id += 2
         print("new_stream.stream_id: ", new_stream.stream_id)
         headers = { ':method': 'GET',
-                    ':scheme': 'http',
+                    ':scheme': scheme,
                     ':authority': address,
                     ':path': path }
         #new_response: Response = Response(headers, on_response)
@@ -818,7 +840,7 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
         next_stream_id += 2
         print("new_stream.stream_id: ", new_stream.stream_id)
         headers = { ':method': 'POST',
-                    ':scheme': 'http',
+                    ':scheme': scheme,
                     ':authority': address,
                     ':path': path }
         #new_response: Response = Response(headers, on_response)
@@ -864,10 +886,10 @@ actor main(env):
         env.exit(0)
 
     #139.162.123.134
-    test_client = Http2Client(net.TCPConnectCap(net.TCPCap(net.NetCap(env.cap))), 'nghttp2.org', 80, _on_connect, _on_error)
+    #test_client = Http2Client(net.TCPConnectCap(net.TCPCap(net.NetCap(env.cap))), 'nghttp2.org', 80, _on_connect, _on_error, tls=False)
     #test_client = Http2Client(net.TCPConnectCap(net.TCPCap(net.NetCap(env.cap))), 'localhost', 8080, _on_connect, _on_error)
 
-    #tls_conn = net.TLSConnection(net.TCPConnectCap(net.TCPCap(net.NetCap(env.cap))), 'nghttp2.org', 443, _on_tls_connect, _on_tls_receive, _on_tls_error, _on_remote_close, True)
+    test_client = Http2Client(net.TCPConnectCap(net.TCPCap(net.NetCap(env.cap))), 'nghttp2.org', 443, _on_connect, _on_error, tls=True)
     #after 10: exit(env)
     #test_client.get('/testget', _on_response)
     #test_client.post('/testpost', b'foobar', _on_response)
