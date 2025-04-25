@@ -799,12 +799,18 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
 
             send_queue.append(ContinuationFrame(header_data, stream_id, True))
 
+        if ready:
+            _send_frames()
+
     def raw_send_data(stream_id: u32, data: bytes, end_stream: bool):
         while len(data) > max_frame_size:
              send_queue.append(DataFrame(data[:max_frame_size], 0, stream_id, False))
              data = data[max_frame_size:]
 
         send_queue.append(DataFrame(data, 0, stream_id, end_stream))
+
+        if ready:
+            _send_frames()
 
     def get(path: str, on_response: action(Http2Client, dict[str, str], bytes) -> None):
         print("next_stream_id: ", next_stream_id)
