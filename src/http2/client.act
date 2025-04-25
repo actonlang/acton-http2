@@ -657,11 +657,11 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
         pass
 
     def _on_tls_connect(con: net.TLSConnection) -> None:
-        print("Sending TCP data: ", CLIENT_PREFACE)
+        print("Sending TLS data: ", CLIENT_PREFACE)
         con.write(CLIENT_PREFACE)
         
         send_bytes: bytes = SettingsFrame({}).serialize()
-        print("Sending TCP data: ", send_bytes)
+        print("Sending TLS data: ", send_bytes)
         con.write(send_bytes)
         ready = True
         on_connect(self)
