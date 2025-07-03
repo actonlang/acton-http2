@@ -5,6 +5,7 @@ CLIENT_PREFACE: bytes = b'PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n'
 
 
 class Frame:
+    stream_id: u32
     def __init__(self):
         self.stream_id = 0
 
@@ -205,7 +206,7 @@ class PushPromiseFrame(Frame):
 
         return serialized
 
-ACK = 0x01
+ACK: u32 = 0x01
 class PingFrame(Frame):
     def __init__(self, ack: bool, data: bytes):
         self.ack = ack
@@ -535,7 +536,7 @@ def decode_frame(buffer: bytes) -> (?Frame, int):
 
     length = (buffer[0] << 16) + (buffer[1] << 8) + buffer[2]
     type = buffer[3]
-    flags = u32(buffer[4])
+    flags: u32 = u32(buffer[4])
     stream_id = u32((buffer[5] << 24) + (buffer[6] << 16) +
                     (buffer[7] << 8) + buffer[8]) & 0x7fffffff
 
@@ -608,7 +609,7 @@ def decode_frame(buffer: bytes) -> (?Frame, int):
         return GoAwayFrame(last_stream_id, error_code, debug_data), (length + 9)
     elif type == 6:
         # PING
-        ack = (flags & ACK) != 0
+        ack: bool = ((flags & ACK) != 0)
         data = buffer[:8]
         return PingFrame(ack, data), (length + 9)
     elif type == 8:
