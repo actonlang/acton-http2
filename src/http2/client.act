@@ -131,6 +131,7 @@ class RstStreamFrame(Frame):
 
 class SettingsFrame(Frame):
     def __init__(self, settings: dict[u16, u32], ack: bool = False):
+        Frame.__init__(self)  # Initialize parent attributes
         self.settings = settings
 
         #if ack and len(self.settings > 0):
@@ -209,6 +210,7 @@ class PushPromiseFrame(Frame):
 ACK: u32 = 0x01
 class PingFrame(Frame):
     def __init__(self, ack: bool, data: bytes):
+        Frame.__init__(self)  # Initialize parent attributes
         self.ack = ack
         self.data = data
 
@@ -235,6 +237,7 @@ class PingFrame(Frame):
 
 class GoAwayFrame(Frame):
     def __init__(self, last_stream_id: u32, error_code: int, debug_data: bytes):
+        Frame.__init__(self)  # Initialize parent attributes
         self.last_stream_id = last_stream_id
         self.error_code = error_code
         self.debug_data = debug_data
@@ -486,7 +489,6 @@ class InvalidState(StreamState):
 
 class Stream(object):
     stream_id: u32
-    client: Http2Client
     state: StreamState
     fields_buffer: bytes
     pp_fields_buffer: bytes
