@@ -1,4 +1,6 @@
 import net
+import logging
+
 import http2.hpack as hpack
 
 CLIENT_PREFACE: bytes = b'PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n'
@@ -630,7 +632,12 @@ def decode_frame(buffer: bytes) -> (?Frame, int):
     return None, 0
 
 
-actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: action(Http2Client) -> None, on_error: action(Http2Client, str) -> None, tls: bool, tls_verify: bool=True, connect_timeout: float=10.0):
+actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: action(Http2Client) -> None, on_error: action(Http2Client, str) -> None, tls: bool, tls_verify: bool=True, connect_timeout: float=10.0, log_handler: ?logging.Handler):
+
+    logh = logging.Handler("http2.Http2Client")
+    if log_handler is not None:
+        logh.set_handler(log_handler)
+    logger = logging.Logger(logh)
 
     scheme = 'https' if tls else 'http'
 
