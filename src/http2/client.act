@@ -1,4 +1,6 @@
 import net
+import logging
+
 import http2.hpack as hpack
 
 CLIENT_PREFACE: bytes = b'PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n'
@@ -532,7 +534,13 @@ class Stream(object):
         self.state = following_state
         return reply_frames, end_headers, end_stream, promised_stream_id
 
-def decode_frame(buffer: bytes) -> (?Frame, int):
+def decode_frame(buffer: bytes, log_handler: ?logging.Handler = None) -> (?Frame, int):
+
+    logh = logging.Handler("http2.decode_frame")
+    if log_handler is not None:
+        logh.set_handler(log_handler)
+    logger = logging.Logger(logh)
+
     if len(buffer) < 10:
         return None, 0
 
@@ -546,7 +554,7 @@ def decode_frame(buffer: bytes) -> (?Frame, int):
     remaining_length = len(buffer)
     #print('Decoding frame of type ', type, ' for stream ', stream_id, ' with length ', length)
     if remaining_length < length:
-        print('Incomplete frame data in buffer (', remaining_length, '/', length, ' bytes received)')
+        logger.info('Incomplete frame data in buffer', {'buffered_length': remaining_length, 'frame_length': length})
         return None, 0
 
     if type == 0:
@@ -588,7 +596,7 @@ def decode_frame(buffer: bytes) -> (?Frame, int):
             setting_value = u32((buffer[i + 2] << 24) + (buffer[i + 3] << 16) +
                              (buffer[i + 4] << 8) + buffer[i + 5])
             settings[setting_id] = setting_value
-        print('SETTINGS frame decoded, ', (length + 9), ' bytes consumed from buffer')
+        #print('SETTINGS frame decoded, ', (length + 9), ' bytes consumed from buffer')
         return SettingsFrame(settings, flags == 0x1), (length + 9)
     elif type == 5:
         pad_len = 0
@@ -626,11 +634,16 @@ def decode_frame(buffer: bytes) -> (?Frame, int):
         #return None, 0
         
         
-    print("Unknown frame type", type)
+    logger.error('Unknown frame type', {'type': type})
     return None, 0
 
 
-actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: action(Http2Client) -> None, on_error: action(Http2Client, str) -> None, tls: bool, tls_verify: bool=True, connect_timeout: float=10.0):
+actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: action(Http2Client) -> None, on_error: action(Http2Client, str) -> None, tls: bool, tls_verify: bool=True, connect_timeout: float=10.0, log_handler: ?logging.Handler):
+
+    logh = logging.Handler("http2.Http2Client")
+    if log_handler is not None:
+        logh.set_handler(log_handler)
+    logger = logging.Logger(logh)
 
     scheme = 'https' if tls else 'http'
 
@@ -657,7 +670,7 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
         tcp_port = port if port is not None else 80
 
         if tls:
-            tls_conn = net.TLSConnection(cap, address, tls_port, _on_tls_connect, _on_tls_receive, _on_tls_error, None, tls_verify, protocols=["h2"])
+            tls_conn = net.TLSConnection(cap, address, tls_port, _on_tls_connect, _on_tls_receive, _on_tls_error, None, tls_verify, protocols=['h2'])
         else:
             tcp_conn = net.TCPConnection(cap, address, tcp_port, _on_tcp_connect, _on_tcp_receive, _on_tcp_error, _on_tcp_remote_close)
 
@@ -666,18 +679,18 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
         pass
 
     def _on_tls_connect(con: net.TLSConnection) -> None:
-        print("Sending TLS data: ", CLIENT_PREFACE)
+        logger.debug('Sending TLS data: ', {'data': CLIENT_PREFACE})
         con.write(CLIENT_PREFACE)
         
         send_bytes: bytes = SettingsFrame({}).serialize()
-        print("Sending TLS data: ", send_bytes)
+        logger.debug('Sending TLS data: ', {'data': send_bytes})
         con.write(send_bytes)
         ready = True
         on_connect(self)
         _send_frames()
 
     def _on_tls_receive(con: net.TLSConnection, data: bytes) -> None:
-        print("Received TLS data:", data)
+        logger.debug('Received TLS data:', {'data': data})
         _on_receive(data)
         pass
 
@@ -690,26 +703,26 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
         pass
 
     def _on_tcp_connect(con: net.TCPConnection) -> None:
-        print("Sending TCP data: ", CLIENT_PREFACE)
+        logger.debug('Sending TCP data: ', {'data': CLIENT_PREFACE})
         con.write(CLIENT_PREFACE)
         
         send_bytes: bytes = SettingsFrame({}).serialize()
-        print("Sending TCP data: ", send_bytes)
+        logger.debug('Sending TCP data: ', {'data': send_bytes})
         con.write(send_bytes)
         ready = True
         on_connect(self)
         _send_frames()
 
     def _on_tcp_receive(con: net.TCPConnection, data: bytes) -> None:
-        print("Received TCP data:", data)
+        logger.debug('Received TCP data:', {'data': data})
         _on_receive(data)
 
     def _on_receive(data: bytes) -> None:
         recv_buffer += data
-        print('First 100 bytes of recv_buffer: ', recv_buffer[:100])
+        logger.debug('First 100 bytes of recv_buffer: ', {'buffer_head': recv_buffer[:100]})
 
         frames = []
-        frame, consumed_bytes = decode_frame(recv_buffer)
+        frame, consumed_bytes = decode_frame(recv_buffer, logh)
         while frame is not None:
             if isinstance(frame, Frame):
                 frames.append(frame)
@@ -718,26 +731,26 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
         
         for frame in frames:
             if isinstance(frame, SettingsFrame):
-                print('Received settings frame', frame)
-                #print(len(frame.settings), 'settings in frame')
-                for setting in frame.settings.items():
-                    print('  setting ', setting)
+                logger.notice('Received settings frame', {'frame': frame})
+                logger.debug('Settings:', {'settings': frame.settings})
+
                 if not frame.ack:
                     send_queue.append(SettingsFrame({}, True))
             elif isinstance(frame, GoAwayFrame):
-                print('Received GOAWAY frame with Last-Stream-ID', frame.last_stream_id,
-                      ' and error code', frame.error_code)
+                logger.notice('Received GOAWAY frame',
+                              {'Last-Stream-ID': frame.last_stream_id,
+                               'error-code': frame.error_code})
             elif isinstance(frame, WindowUpdateFrame):
                 if frame.stream_id == 0:
-                    print('Received global WINDOW_UPDATE frame with increment size', frame.increment_size)
+                    logger.notice('Received global WINDOW_UPDATE frame', {'increment_size': frame.increment_size})
                 else:
-                    print('Receive WINDOW_UPDATE frame with increment size', frame.increment_size, 'for stream', frame.stream_id)
+                    logger.notice('Receive WINDOW_UPDATE frame', {'increment_size': frame.increment_size, 'stream_id': frame.stream_id})
             elif isinstance(frame, PingFrame):
                 if not frame.ack:
                      # PING replies are given priority
                      send_queue.insert(0, PingFrame(True, frame.data))
             elif isinstance(frame, Frame):
-                print('Received frame', frame)
+                logger.notice('Received frame', {'frame': frame})
                 dest_stream = streams[frame.stream_id]
                 reply_frames, end_headers, end_stream, new_stream_id = dest_stream.receive_frame(frame)
 
@@ -753,14 +766,14 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
                 for frame in reply_frames:
                     send_queue.append(frame)
                 if new_stream_id > 0:
-                    print("Launch new stream with id", new_stream_id)
-                    print("Stream", frame.stream_id, "headers:", inflater.inflate(dest_stream.pp_fields_buffer))
+                    logger.info('Launch new stream with id', {'new_stream_id': new_stream_id})
+                    logger.debug('', {'stream_id': frame.stream_id, 'headers': inflater.inflate(dest_stream.pp_fields_buffer)})
                     streams[new_stream_id] = Stream(new_stream_id)
                     promised_pushes.append((inflater.inflate(dest_stream.pp_fields_buffer), streams[new_stream_id]))
                 if end_stream:
-                    print("Stream", frame.stream_id, "ended")
-                    print(" headers:", inflater.inflate(dest_stream.fields_buffer))
-                    print(" data:", dest_stream.data_buffer)
+                    logger.info('Stream ended', {'stream_id': frame.stream_id,
+                                                 'headers': inflater.inflate(dest_stream.fields_buffer),
+                                                 'data': dest_stream.data_buffer})
                     if dest_stream.stream_id in response_cbs:
                         response_cbs[dest_stream.stream_id](self, inflater.inflate(dest_stream.fields_buffer), dest_stream.data_buffer)
 
@@ -775,15 +788,15 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
         pass
 
     def _send_frames():
-        print("Send queue:", send_queue)
+        logger.debug('Send queue:', {'send_queue': send_queue})
         for frame in send_queue:
             send_queue.pop(0)
             send_bytes = frame.serialize()
-            print("Sending frame:", frame)
+            logger.notice('Sending frame:', {'frame': frame})
             if tls_conn is not None:
                 tls_conn.write(send_bytes)
             if tcp_conn is not None:
-                #print("Sending TCP data: ", send_bytes)
+                logger.trace('Sending TCP data', {'data': send_bytes})
                 tcp_conn.write(send_bytes)
 
     def start_raw_stream(on_header_recv: action(Http2Client, u32, dict[str, str], bool) -> None, on_data_recv: action(Http2Client, u32, bytes, bool) -> None) -> u32:
@@ -826,12 +839,9 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
             _send_frames()
 
     def get(path: str, on_response: action(Http2Client, dict[str, str], bytes) -> None):
-        print("next_stream_id: ", next_stream_id)
         new_stream: Stream = Stream(u32(next_stream_id))
-        print("new_stream.stream_id: ", new_stream.stream_id)
         streams[new_stream.stream_id] = new_stream
         next_stream_id += 2
-        print("new_stream.stream_id: ", new_stream.stream_id)
         headers = { ':method': 'GET',
                     ':scheme': scheme,
                     ':authority': address,
@@ -841,23 +851,18 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
         response_cbs[new_stream.stream_id] = on_response
 
         header_data = deflater.deflate(headers)
-        print("New stream id: ", new_stream.stream_id)
-        print("Compressed header data: ", header_data)
+        logger.info('New stream', {'stream_id': new_stream.stream_id})
+        logger.debug('Compressed header data', {'header_data': header_data})
         header_frame = HeadersFrame(header_data, 0, new_stream.stream_id, False, True, True)
 
         send_queue.append(header_frame)
         if ready:
             _send_frames()
 
-        #on_response(self, 418, b'I am a teapot')
-
     def post(path: str, body: bytes, on_response: action(Http2Client, dict[str, str], bytes) -> None):
-        print("next_stream_id: ", next_stream_id)
         new_stream: Stream = Stream(u32(next_stream_id))
-        print("new_stream.stream_id: ", new_stream.stream_id)
         streams[new_stream.stream_id] = new_stream
         next_stream_id += 2
-        print("new_stream.stream_id: ", new_stream.stream_id)
         headers = { ':method': 'POST',
                     ':scheme': scheme,
                     ':authority': address,
@@ -867,8 +872,8 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
         response_cbs[new_stream.stream_id] = on_response
 
         header_data = deflater.deflate(headers)
-        print("New stream id: ", new_stream.stream_id)
-        print("Compressed header data: ", header_data)
+        logger.info('New stream', {'stream_id': new_stream.stream_id})
+        logger.debug('Compressed header data', {'header_data': header_data})
         header_frame = HeadersFrame(header_data, 0, new_stream.stream_id, False, True, False)
 
         send_queue.append(header_frame)
