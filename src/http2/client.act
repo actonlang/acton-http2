@@ -534,7 +534,13 @@ class Stream(object):
         self.state = following_state
         return reply_frames, end_headers, end_stream, promised_stream_id
 
-def decode_frame(buffer: bytes) -> (?Frame, int):
+def decode_frame(buffer: bytes, log_handler: ?logging.Handler = None) -> (?Frame, int):
+
+    logh = logging.Handler("http2.decode_frame")
+    if log_handler is not None:
+        logh.set_handler(log_handler)
+    logger = logging.Logger(logh)
+
     if len(buffer) < 10:
         return None, 0
 
@@ -548,7 +554,7 @@ def decode_frame(buffer: bytes) -> (?Frame, int):
     remaining_length = len(buffer)
     #print('Decoding frame of type ', type, ' for stream ', stream_id, ' with length ', length)
     if remaining_length < length:
-        print('Incomplete frame data in buffer (', remaining_length, '/', length, ' bytes received)')
+        logger.info('Incomplete frame data in buffer', {'buffered_length': remaining_length, 'frame_length': length})
         return None, 0
 
     if type == 0:
@@ -590,7 +596,7 @@ def decode_frame(buffer: bytes) -> (?Frame, int):
             setting_value = u32((buffer[i + 2] << 24) + (buffer[i + 3] << 16) +
                              (buffer[i + 4] << 8) + buffer[i + 5])
             settings[setting_id] = setting_value
-        print('SETTINGS frame decoded, ', (length + 9), ' bytes consumed from buffer')
+        #print('SETTINGS frame decoded, ', (length + 9), ' bytes consumed from buffer')
         return SettingsFrame(settings, flags == 0x1), (length + 9)
     elif type == 5:
         pad_len = 0
@@ -628,7 +634,7 @@ def decode_frame(buffer: bytes) -> (?Frame, int):
         #return None, 0
         
         
-    print("Unknown frame type", type)
+    logger.error('Unknown frame type', {'type': type})
     return None, 0
 
 
@@ -716,7 +722,7 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
         logger.debug('First 100 bytes of recv_buffer: ', {'buffer_head': recv_buffer[:100]})
 
         frames = []
-        frame, consumed_bytes = decode_frame(recv_buffer)
+        frame, consumed_bytes = decode_frame(recv_buffer, logh)
         while frame is not None:
             if isinstance(frame, Frame):
                 frames.append(frame)
