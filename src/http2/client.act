@@ -5,12 +5,12 @@ import http2.hpack as hpack
 
 CLIENT_PREFACE: bytes = b'PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n'
 
-SETTINGS_HEADER_TABLE_SIZE = 0x1
-SETTINGS_ENABLE_PUSH = 0x2
-SETTINGS_MAX_CONCURRENT_STREAMS = 0x3
-SETTINGS_INITIAL_WINDOW_SIZE = 0x4
-SETTINGS_MAX_FRAME_SIZE = 0x5
-SETTINGS_MAX_HEADER_LIST_SIZE = 0x6
+SETTINGS_HEADER_TABLE_SIZE: u16 = 0x1
+SETTINGS_ENABLE_PUSH: u16 = 0x2
+SETTINGS_MAX_CONCURRENT_STREAMS: u16 = 0x3
+SETTINGS_INITIAL_WINDOW_SIZE: u16 = 0x4
+SETTINGS_MAX_FRAME_SIZE: u16 = 0x5
+SETTINGS_MAX_HEADER_LIST_SIZE: u16 = 0x6
 
 class Frame:
     stream_id: u32
@@ -653,6 +653,7 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
 
     scheme = 'https' if tls else 'http'
 
+    var settings: dict[u16, u32] = {SETTINGS_MAX_FRAME_SIZE: 16384}
     var recv_buffer = b''
     var send_queue: list[Frame] = []
     var next_stream_id: u32 = 1
@@ -666,7 +667,7 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
     var ready: bool = False
     # safe constant for max size for now
     # should be configurable in settings
-    var max_frame_size = 16384
+    #var max_frame_size = 16384
 
     var tls_conn: ?net.TLSConnection = None
     var tcp_conn: ?net.TCPConnection = None
@@ -739,6 +740,8 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
             if isinstance(frame, SettingsFrame):
                 logger.notice('Received settings frame', {'frame': frame})
                 logger.debug('Settings:', {'settings': frame.settings})
+
+                settings = frame.settings
 
                 if not frame.ack:
                     send_queue.append(SettingsFrame({}, True))
@@ -815,6 +818,7 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
         return new_stream.stream_id
 
     def raw_send_headers(stream_id: u32, headers: dict[str, str], end_stream: bool):
+        max_frame_size = int(settings[SETTINGS_MAX_FRAME_SIZE])
         header_data = deflater.deflate(headers)
 
         if len(header_data) < max_frame_size:
@@ -835,6 +839,8 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
             _send_frames()
 
     def raw_send_data(stream_id: u32, data: bytes, end_stream: bool):
+        max_frame_size = int(settings[SETTINGS_MAX_FRAME_SIZE])
+
         while len(data) > max_frame_size:
              send_queue.append(DataFrame(data[:max_frame_size], 0, stream_id, False))
              data = data[max_frame_size:]
@@ -866,6 +872,8 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
             _send_frames()
 
     def post(path: str, body: bytes, on_response: action(Http2Client, dict[str, str], bytes) -> None):
+        max_frame_size = int(settings[SETTINGS_MAX_FRAME_SIZE])
+
         new_stream: Stream = Stream(u32(next_stream_id))
         streams[new_stream.stream_id] = new_stream
         next_stream_id += 2
