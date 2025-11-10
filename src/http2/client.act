@@ -498,12 +498,14 @@ class InvalidState(StreamState):
 class Stream(object):
     stream_id: u32
     state: StreamState
+    remaining_window: int
     fields_buffer: bytes
     pp_fields_buffer: bytes
     data_buffer: bytes
 
-    def __init__(self, stream_id: u32, init_state: StreamState = OpenState()):
+    def __init__(self, stream_id: u32, init_window: int, init_state: StreamState = OpenState()):
         self.stream_id = stream_id
+        self.remaining_window = init_window
         self.fields_buffer = b''
         self.pp_fields_buffer = b''
         self.data_buffer = b''
@@ -529,6 +531,8 @@ class Stream(object):
             self.fields_buffer += frame.field_data
             end_headers = frame.end_headers
             end_stream = (frame.end_stream and frame.end_headers)
+        elif isinstance(frame, WindowUpdateFrame):
+            self.remaining_window += int(frame.increment_size)
         elif isinstance(frame, ContinuationFrame):
             if isinstance(self.state, HeadersContinueState):
                 self.fields_buffer += frame.field_data
@@ -777,7 +781,7 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
                 if new_stream_id > 0:
                     logger.info('Launch new stream with id', {'new_stream_id': new_stream_id})
                     logger.debug('', {'stream_id': frame.stream_id, 'headers': inflater.inflate(dest_stream.pp_fields_buffer)})
-                    streams[new_stream_id] = Stream(new_stream_id)
+                    streams[new_stream_id] = Stream(new_stream_id, int(settings[SETTINGS_INITIAL_WINDOW_SIZE]))
                     promised_pushes.append((inflater.inflate(dest_stream.pp_fields_buffer), streams[new_stream_id]))
                 if end_stream:
                     logger.info('Stream ended', {'stream_id': frame.stream_id,
@@ -809,7 +813,7 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
                 tcp_conn.write(send_bytes)
 
     def start_raw_stream(on_header_recv: action(Http2Client, u32, dict[str, str], bool) -> None, on_data_recv: action(Http2Client, u32, bytes, bool) -> None) -> u32:
-        new_stream: Stream = Stream(u32(next_stream_id))
+        new_stream: Stream = Stream(u32(next_stream_id), int(settings[SETTINGS_INITIAL_WINDOW_SIZE]))
 
         streams[new_stream.stream_id] = new_stream
         raw_cbs[new_stream.stream_id] = (on_header_recv, on_data_recv)
@@ -851,7 +855,7 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
             _send_frames()
 
     def get(path: str, on_response: action(Http2Client, dict[str, str], bytes) -> None):
-        new_stream: Stream = Stream(u32(next_stream_id))
+        new_stream: Stream = Stream(u32(next_stream_id), int(settings[SETTINGS_INITIAL_WINDOW_SIZE]))
         streams[new_stream.stream_id] = new_stream
         next_stream_id += 2
         headers = { ':method': 'GET',
@@ -874,7 +878,7 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
     def post(path: str, body: bytes, on_response: action(Http2Client, dict[str, str], bytes) -> None):
         max_frame_size = int(settings[SETTINGS_MAX_FRAME_SIZE])
 
-        new_stream: Stream = Stream(u32(next_stream_id))
+        new_stream: Stream = Stream(u32(next_stream_id), int(settings[SETTINGS_INITIAL_WINDOW_SIZE]))
         streams[new_stream.stream_id] = new_stream
         next_stream_id += 2
         headers = { ':method': 'POST',
