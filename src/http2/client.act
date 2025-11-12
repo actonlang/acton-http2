@@ -5,6 +5,12 @@ import http2.hpack as hpack
 
 CLIENT_PREFACE: bytes = b'PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n'
 
+SETTINGS_HEADER_TABLE_SIZE: u16 = 0x1
+SETTINGS_ENABLE_PUSH: u16 = 0x2
+SETTINGS_MAX_CONCURRENT_STREAMS: u16 = 0x3
+SETTINGS_INITIAL_WINDOW_SIZE: u16 = 0x4
+SETTINGS_MAX_FRAME_SIZE: u16 = 0x5
+SETTINGS_MAX_HEADER_LIST_SIZE: u16 = 0x6
 
 class Frame:
     stream_id: u32
@@ -13,6 +19,9 @@ class Frame:
 
     def __str__(self):
         return 'Frame()'
+
+    def __len__(self):
+        return 0
 
     def serialize(self):
         return b''
@@ -492,12 +501,14 @@ class InvalidState(StreamState):
 class Stream(object):
     stream_id: u32
     state: StreamState
+    window_deduction: int
     fields_buffer: bytes
     pp_fields_buffer: bytes
     data_buffer: bytes
 
     def __init__(self, stream_id: u32, init_state: StreamState = OpenState()):
         self.stream_id = stream_id
+        self.window_deduction = 0
         self.fields_buffer = b''
         self.pp_fields_buffer = b''
         self.data_buffer = b''
@@ -517,12 +528,14 @@ class Stream(object):
             promised_stream_id = frame.promised_stream_id
         elif isinstance(frame, DataFrame):
             self.data_buffer += frame.data
-            reply_frames.append(WindowUpdateFrame(0x7fffffff, self.stream_id))
+            reply_frames.append(WindowUpdateFrame(u32(len(frame.data)), self.stream_id))
             end_stream = frame.end_stream
         elif isinstance(frame, HeadersFrame):
             self.fields_buffer += frame.field_data
             end_headers = frame.end_headers
             end_stream = (frame.end_stream and frame.end_headers)
+        elif isinstance(frame, WindowUpdateFrame):
+            self.window_deduction -= int(frame.increment_size)
         elif isinstance(frame, ContinuationFrame):
             if isinstance(self.state, HeadersContinueState):
                 self.fields_buffer += frame.field_data
@@ -647,9 +660,11 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
 
     scheme = 'https' if tls else 'http'
 
+    var settings: dict[u16, u32] = {SETTINGS_MAX_FRAME_SIZE: 16384}
     var recv_buffer = b''
     var send_queue: list[Frame] = []
     var next_stream_id: u32 = 1
+    var connection_window: int = 65535
     var streams: dict[u32, Stream] = {}
     #var responses: dict[u32, Response] = {}
     var response_cbs: dict[u32, action(Http2Client, dict[str, str], bytes) -> None] = {}
@@ -660,7 +675,7 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
     var ready: bool = False
     # safe constant for max size for now
     # should be configurable in settings
-    var max_frame_size = 16384
+    #var max_frame_size = 16384
 
     var tls_conn: ?net.TLSConnection = None
     var tcp_conn: ?net.TCPConnection = None
@@ -734,6 +749,8 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
                 logger.notice('Received settings frame', {'frame': frame})
                 logger.debug('Settings:', {'settings': frame.settings})
 
+                settings = frame.settings
+
                 if not frame.ack:
                     send_queue.append(SettingsFrame({}, True))
             elif isinstance(frame, GoAwayFrame):
@@ -743,6 +760,7 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
             elif isinstance(frame, WindowUpdateFrame):
                 if frame.stream_id == 0:
                     logger.notice('Received global WINDOW_UPDATE frame', {'increment_size': frame.increment_size})
+                    connection_window += int(frame.increment_size)
                 else:
                     logger.notice('Receive WINDOW_UPDATE frame', {'increment_size': frame.increment_size, 'stream_id': frame.stream_id})
             elif isinstance(frame, PingFrame):
@@ -753,6 +771,9 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
                 logger.notice('Received frame', {'frame': frame})
                 dest_stream = streams[frame.stream_id]
                 reply_frames, end_headers, end_stream, new_stream_id = dest_stream.receive_frame(frame)
+
+                if isinstance(frame, DataFrame):
+                    send_queue.append(WindowUpdateFrame(u32(len(frame.data)), 0))
 
                 if frame.stream_id in raw_cbs:
                     header_cb, data_cb = raw_cbs[frame.stream_id]
@@ -789,8 +810,19 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
 
     def _send_frames():
         logger.debug('Send queue:', {'send_queue': send_queue})
+        deferred_frames: list[Frame] = []
         for frame in send_queue:
             send_queue.pop(0)
+            if isinstance(frame, DataFrame):
+                length = len(frame.data)
+                if (length < connection_window and
+                    length < (int(settings[SETTINGS_INITIAL_WINDOW_SIZE]) -
+                              streams[frame.stream_id].window_deduction)):
+                    connection_window -= length
+                    streams[frame.stream_id].window_deduction += length
+                else:
+                    deferred_frames.append(frame)
+                    continue
             send_bytes = frame.serialize()
             logger.notice('Sending frame:', {'frame': frame})
             if tls_conn is not None:
@@ -798,6 +830,8 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
             if tcp_conn is not None:
                 logger.trace('Sending TCP data', {'data': send_bytes})
                 tcp_conn.write(send_bytes)
+
+        send_queue.extend(deferred_frames)
 
     def start_raw_stream(on_header_recv: action(Http2Client, u32, dict[str, str], bool) -> None, on_data_recv: action(Http2Client, u32, bytes, bool) -> None) -> u32:
         new_stream: Stream = Stream(u32(next_stream_id))
@@ -809,6 +843,7 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
         return new_stream.stream_id
 
     def raw_send_headers(stream_id: u32, headers: dict[str, str], end_stream: bool):
+        max_frame_size = int(settings[SETTINGS_MAX_FRAME_SIZE])
         header_data = deflater.deflate(headers)
 
         if len(header_data) < max_frame_size:
@@ -829,6 +864,8 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
             _send_frames()
 
     def raw_send_data(stream_id: u32, data: bytes, end_stream: bool):
+        max_frame_size = int(settings[SETTINGS_MAX_FRAME_SIZE])
+
         while len(data) > max_frame_size:
              send_queue.append(DataFrame(data[:max_frame_size], 0, stream_id, False))
              data = data[max_frame_size:]
@@ -860,6 +897,8 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
             _send_frames()
 
     def post(path: str, body: bytes, on_response: action(Http2Client, dict[str, str], bytes) -> None):
+        max_frame_size = int(settings[SETTINGS_MAX_FRAME_SIZE])
+
         new_stream: Stream = Stream(u32(next_stream_id))
         streams[new_stream.stream_id] = new_stream
         next_stream_id += 2
