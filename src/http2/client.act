@@ -772,6 +772,9 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
                 dest_stream = streams[frame.stream_id]
                 reply_frames, end_headers, end_stream, new_stream_id = dest_stream.receive_frame(frame)
 
+                if isinstance(frame, DataFrame):
+                    send_queue.append(WindowUpdateFrame(u32(len(frame.data)), 0))
+
                 if frame.stream_id in raw_cbs:
                     header_cb, data_cb = raw_cbs[frame.stream_id]
 
