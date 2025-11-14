@@ -821,6 +821,7 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
                     connection_window -= length
                     streams[frame.stream_id].window_deduction += length
                 else:
+                    logger.notice('Frame deferred due to insufficient window:', {'frame': frame, 'connection_window': connection_window, 'initial_window_size': settings[SETTINGS_INITIAL_WINDOW_SIZE], 'stream_window_deduction': streams[frame.stream_id].window_deduction})
                     deferred_frames.append(frame)
                     continue
             send_bytes = frame.serialize()
@@ -846,6 +847,8 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
         max_frame_size = int(settings[SETTINGS_MAX_FRAME_SIZE])
         header_data = deflater.deflate(headers)
 
+        logger.notice('Sending headers on stream', {'stream_id': stream_id, 'headers': headers})
+
         if len(header_data) < max_frame_size:
             header_frame = HeadersFrame(header_data, 0, stream_id, False, True, end_stream)
             send_queue.append(header_frame)
@@ -865,6 +868,8 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
 
     def raw_send_data(stream_id: u32, data: bytes, end_stream: bool):
         max_frame_size = int(settings[SETTINGS_MAX_FRAME_SIZE])
+
+        logger.notice('Sending data on stream', {'stream_id': stream_id, 'headers': data})
 
         while len(data) > max_frame_size:
              send_queue.append(DataFrame(data[:max_frame_size], 0, stream_id, False))
