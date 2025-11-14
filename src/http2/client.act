@@ -660,7 +660,10 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
 
     scheme = 'https' if tls else 'http'
 
-    var settings: dict[u16, u32] = {SETTINGS_MAX_FRAME_SIZE: 16384}
+    var settings: dict[u16, u32] = { SETTINGS_HEADER_TABLE_SIZE: 4096,
+                                     SETTINGS_ENABLE_PUSH: 1,
+                                     SETTINGS_INITIAL_WINDOW_SIZE: 65535,
+                                     SETTINGS_MAX_FRAME_SIZE: 16384 }
     var recv_buffer = b''
     var send_queue: list[Frame] = []
     var next_stream_id: u32 = 1
@@ -749,7 +752,8 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
                 logger.notice('Received settings frame', {'frame': frame})
                 logger.debug('Settings:', {'settings': frame.settings})
 
-                settings = frame.settings
+                for setting, value in frame.settings.items():
+                    settings[setting] = value
 
                 if not frame.ack:
                     send_queue.append(SettingsFrame({}, True))
