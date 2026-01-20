@@ -3,7 +3,7 @@
     "zig_dependencies": {
         "nghttp2": {
             "url": "https://github.com/actonlang/nghttp2/archive/refs/heads/zig-build-v0.13.zip",
-            "hash": "12202b432d79cd653a6bb52858127a8af569e99331175692f0bcafe2258aaddfff40",
+            "hash": "N-V-__8AAKGJWAArQy15zWU6a7UoWBJ6ivVp6ZMxF1aS8Lyv",
             "artifacts": [
                 "nghttp2"
             ]
