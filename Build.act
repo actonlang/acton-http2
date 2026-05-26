@@ -2,8 +2,7 @@ name = "acton_http2"
 fingerprint = 0xbbd7098e22f66a55
 zig_dependencies = {
   "nghttp2": (
-        url="https://github.com/actonlang/nghttp2/archive/refs/heads/zig-build-v0.15.zip",
-        hash="N-V-__8AAKiJWAB3sf5bGEwh2rK9TQZQyzxt0hbWPfqYYbEq",
+        path="deps/nghttp2",
         artifacts=["nghttp2"]
     )
 }

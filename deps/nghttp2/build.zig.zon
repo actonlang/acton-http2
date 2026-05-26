@@ -1,0 +1,17 @@
+.{
+    .name = .nghttp2,
+    .version = "1.63.0+1",
+    .fingerprint = 0xaa1b34991ca96657,
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{
+        .nghttp2_upstream = .{
+            .url = "https://github.com/nghttp2/nghttp2/archive/refs/tags/v1.63.0.tar.gz",
+            .hash = "N-V-__8AAOF8WAB3cIz9Dsy9bS9I-LSgbqIOmez5YJZjYVz1",
+            .lazy = false,
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+    },
+}
