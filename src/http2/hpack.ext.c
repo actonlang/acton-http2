@@ -1,3 +1,5 @@
+#include <stdint.h>
+
 #include <nghttp2/nghttp2.h>
 
 #define DEFAULT_MAX_BUFLEN 4096
@@ -32,7 +34,7 @@ B_NoneType http2Q_hpackQ_DeflaterD__init_deflater (http2Q_hpackQ_Deflater self) 
     nghttp2_hd_deflater *deflater;
     nghttp2_hd_deflate_new2(&deflater, DEFAULT_MAX_BUFLEN, mem);
     //nghttp2_hd_deflate_new(&deflater, DEFAULT_MAX_BUFLEN);
-    self->_deflater = toB_u64((unsigned long)deflater);
+    self->_deflater = (uint64_t)(uintptr_t)deflater;
     return B_None;
 }
 
@@ -43,12 +45,12 @@ B_NoneType http2Q_hpackQ_InflaterD__init_inflater (http2Q_hpackQ_Inflater self) 
     nghttp2_hd_inflater *inflater;
     //nghttp2_hd_inflate_new2(&inflater, &mem);
     nghttp2_hd_inflate_new(&inflater);
-    self->_inflater = toB_u64((unsigned long)inflater);
+    self->_inflater = (uint64_t)(uintptr_t)inflater;
     return B_None;
 }
 
 B_bytes http2Q_hpackQ_DeflaterD_deflate(http2Q_hpackQ_Deflater self, B_dict headers) {
-    nghttp2_hd_deflater *deflater = (nghttp2_hd_deflater*)fromB_u64(self->_deflater);
+    nghttp2_hd_deflater *deflater = (nghttp2_hd_deflater *)(uintptr_t)self->_deflater;
 
     B_IteratorD_dict_items iter = $NEW(B_IteratorD_dict_items, headers);
     B_tuple item;
@@ -96,7 +98,7 @@ B_bytes http2Q_hpackQ_DeflaterD_deflate(http2Q_hpackQ_Deflater self, B_dict head
 }
 
 B_dict http2Q_hpackQ_InflaterD_inflate(http2Q_hpackQ_Inflater self, B_bytes compressed_headers) {
-    nghttp2_hd_inflater *inflater = (nghttp2_hd_inflater*)fromB_u64(self->_inflater);
+    nghttp2_hd_inflater *inflater = (nghttp2_hd_inflater *)(uintptr_t)self->_inflater;
 
     size_t inlen = (size_t)compressed_headers->nbytes;
     uint8_t *in = (uint8_t*)compressed_headers->str;
