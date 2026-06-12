@@ -1,5 +1,5 @@
-name = "acton_http2"
-fingerprint = 0xbbd7098e22f66a55
+name = "http2"
+fingerprint = 0x3f2d14a0c3a8c9dd
 zig_dependencies = {
   "nghttp2": (
         path="deps/nghttp2",
