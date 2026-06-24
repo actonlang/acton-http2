@@ -815,8 +815,8 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
     def _send_frames():
         logger.debug('Send queue:', {'send_queue': send_queue})
         deferred_frames: list[Frame] = []
-        for frame in send_queue:
-            send_queue.pop(0)
+        while len(send_queue) > 0:
+            frame = send_queue.pop(0)
             if isinstance(frame, DataFrame):
                 length = len(frame.data)
                 if (length < connection_window and
