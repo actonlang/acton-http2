@@ -85,16 +85,15 @@ B_bytes http2Q_hpackQ_DeflaterD_deflate(http2Q_hpackQ_Deflater self, B_dict head
 
     nghttp2_ssize deflate_ret = nghttp2_hd_deflate_hd2(deflater, buf, buflen, nvs, numheaders);
 
-    if (deflate_ret < 0) {
-        buf[0] = 0;
-    }
-    else {
-        buf[buflen] = 0;
-    }
+    // HPACK output is binary and routinely contains NUL bytes, so it must be
+    // returned with its actual length (nghttp2_hd_deflate_hd2 returns the number
+    // of bytes written) rather than as a NUL-terminated C string, which would
+    // truncate the header block at the first 0x00.
+    int out_len = (deflate_ret < 0) ? 0 : (int)deflate_ret;
 
     acton_free(nvs);
 
-    return to$bytes((char*)buf);
+    return to$bytesD_len((char*)buf, out_len);
 }
 
 B_dict http2Q_hpackQ_InflaterD_inflate(http2Q_hpackQ_Inflater self, B_bytes compressed_headers) {
