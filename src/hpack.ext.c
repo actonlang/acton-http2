@@ -79,6 +79,24 @@ B_bytes http2Q_hpackQ_DeflaterD_deflate(http2Q_hpackQ_Deflater self, B_dict head
 	}
     }
 
+    // HTTP/2 requires all pseudo-headers (names starting with ':') to precede
+    // regular headers. nghttp2 encodes the nv array in the order it is given
+    // without reordering, and the array follows dict iteration order, so move any
+    // pseudo-headers to the front (keeping their relative order) before encoding;
+    // otherwise a caller that lists a regular header first yields a block that
+    // strict decoders reject.
+    int dst = 0;
+    for (int i = 0; i < numheaders; i++) {
+        if (nvs[i].namelen > 0 && nvs[i].name[0] == ':') {
+            nghttp2_nv tmp = nvs[i];
+            for (int k = i; k > dst; k--) {
+                nvs[k] = nvs[k - 1];
+            }
+            nvs[dst] = tmp;
+            dst++;
+        }
+    }
+
     size_t buflen = nghttp2_hd_deflate_bound(deflater, nvs, numheaders);
 
     uint8_t* buf = acton_malloc(buflen+1);
