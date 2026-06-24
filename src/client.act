@@ -815,8 +815,18 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
     def _send_frames():
         logger.debug('Send queue:', {'send_queue': send_queue})
         deferred_frames: list[Frame] = []
+        deferred_streams: dict[u32, bool] = {}
         while len(send_queue) > 0:
             frame = send_queue.pop(0)
+            # Once a stream has a DATA frame deferred for flow control, hold its
+            # later order-sensitive frames behind it: more DATA, or trailing
+            # HEADERS / CONTINUATION (which may carry END_STREAM). Otherwise they
+            # would be written ahead of the deferred body and corrupt the stream.
+            # Control frames such as WINDOW_UPDATE are not order-sensitive and
+            # still proceed (and on other streams everything proceeds).
+            if frame.stream_id in deferred_streams and (isinstance(frame, DataFrame) or isinstance(frame, HeadersFrame) or isinstance(frame, ContinuationFrame)):
+                deferred_frames.append(frame)
+                continue
             if isinstance(frame, DataFrame):
                 length = len(frame.data)
                 if (length < connection_window and
@@ -827,6 +837,7 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
                 else:
                     logger.notice('Frame deferred due to insufficient window:', {'frame': frame, 'connection_window': connection_window, 'initial_window_size': settings[SETTINGS_INITIAL_WINDOW_SIZE], 'stream_window_deduction': streams[frame.stream_id].window_deduction})
                     deferred_frames.append(frame)
+                    deferred_streams[frame.stream_id] = True
                     continue
             send_bytes = frame.serialize()
             logger.notice('Sending frame:', {'frame': frame})
