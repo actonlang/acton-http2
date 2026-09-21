@@ -53,14 +53,18 @@ B_bytes http2Q_hpackQ_DeflaterD_deflate(http2Q_hpackQ_Deflater self, B_dict head
     nghttp2_hd_deflater *deflater = (nghttp2_hd_deflater *)(uintptr_t)self->_deflater;
 
     B_IteratorD_dict_items iter = $NEW(B_IteratorD_dict_items, headers);
-    B_tuple item;
+    $WORD nxt;
 
     size_t numheaders = headers->numelements;
 
     nghttp2_nv *nvs = acton_calloc(numheaders, sizeof(nghttp2_nv));
 
     for (int i=0; i < numheaders; i++) {
-        item = (B_tuple)iter->$class->__next__(iter);
+        if (!iter->$class->__next__(iter, &nxt)) {
+            numheaders = i;
+            break;
+        }
+        B_tuple item = (B_tuple)nxt;
         B_value key = item->components[0];
         B_value value = item->components[1];
         if (value && key->$class->$class_id == STR_ID &&
