@@ -651,7 +651,7 @@ def decode_frame(buffer: bytes, log_handler: ?logging.Handler = None) -> (?Frame
     return None, 0
 
 
-actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: action(Http2Client) -> None, on_error: action(Http2Client, str) -> None, tls: bool, tls_verify: bool=True, connect_timeout: float=10.0, log_handler: ?logging.Handler):
+actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: action(Http2Client) -> None, on_error: action(Http2Client, str) -> None, tls: bool, tls_verify: bool=True, connect_timeout: float=10.0, log_handler: ?logging.Handler=None):
 
     logh = logging.Handler("http2.Http2Client")
     if log_handler is not None:
