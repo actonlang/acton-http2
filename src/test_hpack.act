@@ -1,0 +1,57 @@
+import acton.rts
+import testing
+import hpack
+
+def _headers(k: int) -> dict[str, str]:
+    return {
+        ":method": "GET",
+        ":path": "/index.html",
+        "user-agent": "acton-test",
+        "x-request": str(k),
+    }
+
+def _test_many_inflaters():
+    """Each new Inflater decodes the first header block of a connection"""
+    block = hpack.Deflater().deflate(_headers(0))
+    for k in range(10000):
+        inflater = hpack.Inflater()
+        testing.assertEqual(inflater.inflate(block), _headers(0))
+
+actor _test_inflater_keeps_state_across_gc(t: testing.EnvT):
+    """An Inflater keeps its dynamic table across collections"""
+    deflater = hpack.Deflater()
+    inflater = hpack.Inflater()
+    try:
+        for k in range(20):
+            acton.rts.gc(t.env.syscap)
+            # Later blocks refer to entries that earlier blocks added
+            testing.assertEqual(inflater.inflate(deflater.deflate(_headers(k))), _headers(k))
+        t.success()
+    except Exception as e:
+        t.failure(e)
+
+actor _test_dropped_inflaters_release_memory(t: testing.EnvT):
+    """Inflaters that are no longer referenced keep no memory outside the
+    collector's heap"""
+    cap = t.env.syscap
+    block = hpack.Deflater().deflate(_headers(0))
+
+    def decode(n: int):
+        for k in range(n):
+            hpack.Inflater().inflate(block)
+
+    def outside_gc_heap() -> int:
+        # Resident memory minus the part of the collector's heap that is
+        # mapped, so that the size of the heap does not count
+        acton.rts.gc(cap)
+        info = acton.rts.get_gc_info(cap)
+        return int(acton.rts.get_rss(cap)) - int(info.heap_size - info.unmapped_bytes)
+
+    decode(1000)
+    mem_start = outside_gc_heap()
+    decode(100000)
+    growth = outside_gc_heap() - mem_start
+    if growth < 32 * 1024 * 1024:
+        t.success()
+    else:
+        t.failure(AssertionError("Memory outside the GC heap grew by " + str(growth) + " bytes over 100000 dropped Inflaters"))
