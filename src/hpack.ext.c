@@ -43,8 +43,9 @@ B_NoneType http2Q_hpackQ_InflaterD__init_inflater (http2Q_hpackQ_Inflater self) 
     *mem = (nghttp2_mem){NULL, acton_malloc_cb, acton_free_cb,
 	                 acton_calloc_cb, acton_realloc_cb};
     nghttp2_hd_inflater *inflater;
-    //nghttp2_hd_inflate_new2(&inflater, &mem);
-    nghttp2_hd_inflate_new(&inflater);
+    // On the GC heap like the deflater, so the collector frees the inflater
+    // together with the Inflater object
+    nghttp2_hd_inflate_new2(&inflater, mem);
     self->_inflater = (uint64_t)(uintptr_t)inflater;
     return B_None;
 }
