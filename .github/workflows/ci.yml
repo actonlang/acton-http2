@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actonlang/setup-acton@v1
+        with:
+          channel: 'tip'
+      - name: "Check out repository code"
+        uses: actions/checkout@v4
+      - run: acton test
+      # The write-barrier checker runs each test in generational GC mode and
+      # exits with status 70 at a pointer store into GC memory without its
+      # barrier. The checker makes the tests slower: --max-time 10000 gives
+      # each test 11 s instead of 3 s, and --min-iter 0 keeps a slow test at
+      # one run.
+      - name: "Run the tests under the write-barrier checker"
+        run: acton test --gc-check --min-iter 0 --max-time 10000

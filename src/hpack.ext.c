@@ -7,14 +7,21 @@
 void http2Q_hpackQ___ext_init__() {
 }
 
+// nghttp2 links the allocations of the deflater and the inflater together
+// without a write barrier: the dynamic table's ring buffer, hash map and
+// entries, and the inflater's header buffers. So they come from the kind
+// that every collection rescans.
 void *acton_malloc_cb(size_t size, void *mem_user_data) {
     //printf("acton_malloc_cb\n");
-    return acton_malloc(size);
+    return acton_malloc_rescanned(size);
 }
 
+// acton_malloc_rescanned returns cleared memory
 void *acton_calloc_cb(size_t nmemb, size_t size, void *mem_user_data) {
     //printf("acton_calloc_cb\n");
-    return acton_calloc(nmemb, size);
+    if (size != 0 && nmemb > SIZE_MAX / size)
+        return NULL;
+    return acton_malloc_rescanned(nmemb * size);
 }
 
 void acton_free_cb(void *ptr, void *mem_user_data) {
@@ -22,8 +29,12 @@ void acton_free_cb(void *ptr, void *mem_user_data) {
     acton_free(ptr);
 }
 
+// acton_realloc keeps the kind of an existing object, but allocates
+// ordinary memory for NULL
 void *acton_realloc_cb(void *ptr, size_t size, void *mem_user_data) {
     //printf("acton_realloc_cb\n");
+    if (ptr == NULL)
+        return acton_malloc_rescanned(size);
     return acton_realloc(ptr, size);
 }
 
@@ -34,7 +45,9 @@ B_NoneType http2Q_hpackQ_DeflaterD__init_deflater (http2Q_hpackQ_Deflater self) 
     nghttp2_hd_deflater *deflater;
     nghttp2_hd_deflate_new2(&deflater, DEFAULT_MAX_BUFLEN, mem);
     //nghttp2_hd_deflate_new(&deflater, DEFAULT_MAX_BUFLEN);
+    // A GC pointer kept in an integer attribute needs the write barrier too
     self->_deflater = (uint64_t)(uintptr_t)deflater;
+    ACTON_WBAR(self, &self->_deflater, deflater);
     return B_None;
 }
 
@@ -46,7 +59,9 @@ B_NoneType http2Q_hpackQ_InflaterD__init_inflater (http2Q_hpackQ_Inflater self) 
     // On the GC heap like the deflater, so the collector frees the inflater
     // together with the Inflater object
     nghttp2_hd_inflate_new2(&inflater, mem);
+    // A GC pointer kept in an integer attribute needs the write barrier too
     self->_inflater = (uint64_t)(uintptr_t)inflater;
+    ACTON_WBAR(self, &self->_inflater, inflater);
     return B_None;
 }
 
