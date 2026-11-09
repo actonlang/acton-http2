@@ -165,7 +165,7 @@ B_dict http2Q_hpackQ_InflaterD_inflate(http2Q_hpackQ_Inflater self, B_bytes comp
 	    strncpy(name, (char*)nv_out.name, nv_out.namelen + 1);
 	    strncpy(value, (char*)nv_out.value, nv_out.valuelen + 1);
 
-	    B_dictD_setitem(ret, wit, to$str(name), to$str(value));
+	    B_dictD_setitem(ret, to$str(name), to$str(value));
 	}
 
 	if (inflate_flags & NGHTTP2_HD_INFLATE_FINAL) {
