@@ -10,6 +10,30 @@ def _headers(k: int) -> dict[str, str]:
         "x-request": str(k),
     }
 
+_FILLER = "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
+
+def _churn_headers(k: int) -> dict[str, str]:
+    # Block k repeats four headers of block k - 1, which the encoder sends as
+    # indexes into the dynamic table, and adds four new ones. Each new entry
+    # takes about 100 of the table's 4096 bytes, so from about the tenth block
+    # on every block evicts the four oldest entries.
+    headers = {":method": "GET", ":path": "/churn/" + str(k)}
+    for i in range(4 * k - 4, 4 * k + 4):
+        headers["x-churn-" + str(i % 32)] = str(i) + "." + _FILLER
+    return headers
+
+proc def _test_tables_churn_across_collections(t: testing.SyncT):
+    """A Deflater and Inflater pair keeps its dynamic tables while they fill,
+    evict and refill across many collections"""
+    # The write-barrier checker of acton test --gc-check makes this take
+    # close to the default timeout
+    t.timeout(30.0)
+    deflater = hpack.Deflater()
+    inflater = hpack.Inflater()
+    for k in range(20000):
+        headers = _churn_headers(k)
+        testing.assertEqual(inflater.inflate(deflater.deflate(headers)), headers)
+
 def _test_many_inflaters():
     """Each new Inflater decodes the first header block of a connection"""
     block = hpack.Deflater().deflate(_headers(0))
