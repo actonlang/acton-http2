@@ -1,4 +1,3 @@
-import acton.rts
 import testing
 import hpack
 
@@ -47,7 +46,7 @@ actor _test_inflater_keeps_state_across_gc(t: testing.EnvT):
     inflater = hpack.Inflater()
     try:
         for k in range(20):
-            acton.rts.gc(t.env.syscap)
+            t.env.rts.gc()
             # Later blocks refer to entries that earlier blocks added
             testing.assertEqual(inflater.inflate(deflater.deflate(_headers(k))), _headers(k))
         t.success()
@@ -57,7 +56,7 @@ actor _test_inflater_keeps_state_across_gc(t: testing.EnvT):
 actor _test_dropped_inflaters_release_memory(t: testing.EnvT):
     """Inflaters that are no longer referenced keep no memory outside the
     collector's heap"""
-    cap = t.env.syscap
+    rts = t.env.rts
     block = hpack.Deflater().deflate(_headers(0))
 
     def decode(n: int):
@@ -67,9 +66,12 @@ actor _test_dropped_inflaters_release_memory(t: testing.EnvT):
     def outside_gc_heap() -> int:
         # Resident memory minus the part of the collector's heap that is
         # mapped, so that the size of the heap does not count
-        acton.rts.gc(cap)
-        info = acton.rts.get_gc_info(cap)
-        return int(acton.rts.get_rss(cap)) - int(info.heap_size - info.unmapped_bytes)
+        rts.gc()
+        stats = rts.gc_stats()
+        rss = rts.process_stats().rss
+        if rss is None:
+            t.skip("Process resident memory is unavailable")
+        return int(rss!) - int(stats.heap_size - stats.unmapped_bytes)
 
     decode(1000)
     mem_start = outside_gc_heap()
