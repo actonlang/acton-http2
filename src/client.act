@@ -654,8 +654,6 @@ def decode_frame(buffer: bytes, log_handler: ?logging.Handler = None) -> (?Frame
 actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: action(Http2Client) -> None, on_error: action(Http2Client, str) -> None, tls: bool, tls_verify: bool=True, connect_timeout: float=10.0, log_handler: ?logging.Handler=None):
 
     logh = logging.Handler("http2.Http2Client")
-    if log_handler is not None:
-        logh.set_handler(log_handler)
     logger = logging.Logger(logh)
 
     scheme = 'https' if tls else 'http'
@@ -946,7 +944,10 @@ actor Http2Client(cap: net.TCPConnectCap, address: str, port: int, on_connect: a
         if ready:
             _send_frames()
 
-    _connect()
+    def __startup__():
+        if log_handler is not None:
+            logh.set_handler(log_handler)
+        _connect()
 
 def _test_get(env: Env):
     pass
@@ -976,4 +977,5 @@ actor main(env):
     #after 10: exit(env)
     #test_client.get('/testget', _on_response)
     #test_client.post('/testpost', b'foobar', _on_response)
-    test_client.get('/', _on_response)
+    def __startup__():
+        test_client.get('/', _on_response)

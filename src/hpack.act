@@ -43,5 +43,6 @@ def _test_roundtrip():
 
 
 actor main(env):
-    _test_roundtrip()
-    env.exit(0)
+    def __startup__():
+        _test_roundtrip()
+        env.exit(0)
