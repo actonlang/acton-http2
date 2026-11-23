@@ -127,11 +127,11 @@ B_bytes http2Q_hpackQ_DeflaterD_deflate(http2Q_hpackQ_Deflater self, B_dict head
     // returned with its actual length (nghttp2_hd_deflate_hd2 returns the number
     // of bytes written) rather than as a NUL-terminated C string, which would
     // truncate the header block at the first 0x00.
-    int out_len = (deflate_ret < 0) ? 0 : (int)deflate_ret;
+    int64_t out_len = (deflate_ret < 0) ? 0 : deflate_ret;
 
     acton_free(nvs);
 
-    return to$bytesD_len((char*)buf, out_len);
+    return actBytesFromCStringLength((char *)buf, out_len);
 }
 
 B_dict http2Q_hpackQ_InflaterD_inflate(http2Q_hpackQ_Inflater self, B_bytes compressed_headers) {
@@ -159,13 +159,9 @@ B_dict http2Q_hpackQ_InflaterD_inflate(http2Q_hpackQ_Inflater self, B_bytes comp
 	inlen -= inflate_ret;
 
 	if (inflate_flags & NGHTTP2_HD_INFLATE_EMIT) {
-            char *name = acton_malloc(nv_out.namelen + 1);
-	    char *value = acton_malloc(nv_out.valuelen + 1);
-
-	    strncpy(name, (char*)nv_out.name, nv_out.namelen + 1);
-	    strncpy(value, (char*)nv_out.value, nv_out.valuelen + 1);
-
-	    B_dictD_setitem(ret, to$str(name), to$str(value));
+            B_str name = actStrFromCStringLengthCopy((const char *)nv_out.name, nv_out.namelen);
+            B_str value = actStrFromCStringLengthCopy((const char *)nv_out.value, nv_out.valuelen);
+            B_dictD_setitem(ret, name, value);
 	}
 
 	if (inflate_flags & NGHTTP2_HD_INFLATE_FINAL) {
